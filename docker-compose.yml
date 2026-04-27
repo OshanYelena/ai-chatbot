@@ -5,9 +5,13 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - .env.docker
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "python -m alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
   db:
     image: postgres:16
@@ -20,6 +24,11 @@ services:
       - "5432:5432"
     volumes:
       - chatbot_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatbot_user -d simple_chatbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   chatbot_postgres_data:
