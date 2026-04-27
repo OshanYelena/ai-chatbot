@@ -1,22 +1,23 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey
 
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.db.database import Base
 
 
 class Conversation(Base):
-    __tablename__ = "Conversations"
-    id = Column(String, primary_key=True, default=lambda : str (uuid.uuid4()))
-    summary = Column(Text, default="")
-    created_at = Column(DateTime, default=datetime.utcnow())
+    __tablename__ = "conversations"
 
-    message = relationship(
-        "chatMessages",
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    summary = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    messages = relationship(
+        "ChatMessage",
         back_populates="conversation",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
 
     memories = relationship(
@@ -25,8 +26,8 @@ class Conversation(Base):
         cascade="all, delete-orphan",
     )
 
-class ChatMessage(Base):
 
+class ChatMessage(Base):
     __tablename__ = "chat_messages"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -34,10 +35,14 @@ class ChatMessage(Base):
     role = Column(String, nullable=False)
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    conversation = relationship("Conversation", back_populates="messages")
+
+    conversation = relationship(
+        "Conversation",
+        back_populates="messages",
+    )
+
 
 class LongTermMemory(Base):
-
     __tablename__ = "long_term_memories"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -46,4 +51,8 @@ class LongTermMemory(Base):
     value = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
-    conversation = relationship("Conversation", back_populates="memories")
+
+    conversation = relationship(
+        "Conversation",
+        back_populates="memories",
+    )
