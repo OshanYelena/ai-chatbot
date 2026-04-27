@@ -20,7 +20,7 @@ def chat(request: ChatRequest):
         content=request.message
     )
 
-    messages = memory_service.get_messages(conversation_id)
+    messages = memory_service.get_recent_messages(conversation_id)
 
     reply = llm_service.generate_reply(messages)
     return ChatResponse(reply=reply, conversation_id=conversation_id)
