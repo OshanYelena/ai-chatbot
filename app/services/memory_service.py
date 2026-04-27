@@ -44,7 +44,15 @@ class MemoryService:
         self.store[conversation_id] = recent_messages
 
     def build_context_messages(self, conversation_id:str) -> List[dict]:
+        from app.services.long_term_memory import long_term_memory_service
         messages: List[dict] = []
+
+        memory_text = long_term_memory_service.format_memory_for_prompt(conversation_id)
+        if memory_text:
+            messages.append({
+                "role": "system",
+                "content": memory_text,
+            })
 
         summary = self.get_summary(conversation_id)
         if summary:
@@ -52,6 +60,7 @@ class MemoryService:
                 "role": "system",
                 "content": f"Previous conversation summary: {summary}"
             })
+
         messages.extend(self.get_messages(conversation_id)[-settings.MAX_HISTORY_MESSAGES: ])
         return messages
 
