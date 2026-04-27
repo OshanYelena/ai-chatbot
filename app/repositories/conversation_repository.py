@@ -121,3 +121,11 @@ class ConversationRepository:
             self.db.add(memory)
 
         self.db.commit()
+
+    def get_long_term_memory(self, conversation_id: str) -> dict:
+        memories = (
+            self.db.query(LongTermMemory)
+            .filter(LongTermMemory.conversation_id == conversation_id)
+            .all()
+        )
+        return {memory.key: memory.value for memory in memories}
