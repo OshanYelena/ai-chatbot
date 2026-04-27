@@ -13,10 +13,8 @@ class LLMService:
             messages=[{
                 "role": "system",
                 "content":" You are a helpful, friendly AI chatbot"
-            },{
-                "role": "user",
-                "content": message
-            }]
+            },
+            *message]
 
         )
         return response.choices[0].message.content
