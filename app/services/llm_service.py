@@ -38,4 +38,25 @@ class LLMService:
 
         return responses.choices[0].message.content
 
+    def extract_user_facts(self, message: str) -> dict:
+        responses = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{
+                "role": "system",
+                "content": """  "
+                Extract stable user facts from this message. 
+                Only extract useful long-term information like name, preferences, goals. 
+                Return as JSON. If nothing useful, return empty JSON."""
+            },
+                {"role": "user",
+                 "content": message}
+            ]
+        )
+
+        try:
+            import json
+            return json.loads(responses.choices[0].message.content)
+        except:
+            return {}
+
 llm_service = LLMService()
