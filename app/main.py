@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.core.config import settings
+from app.api.v1.chat import router as chat_router
 
 
 app = FastAPI(
@@ -7,6 +8,8 @@ app = FastAPI(
     version=settings.APP_VERSION,
     description="A production-style hello world chatbot backend"
 )
+
+app.include_router(chat_router, prefix="/api/v1")
 
 
 @app.get("/")
