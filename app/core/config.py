@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     OPENAI_MODEL:str = "gpt-40-mini"
 
     MAX_HISTORY_MESSAGES: int = 10
+    SUMMARY_TRIGGER_MESSAGES: int = 12
+    RECENT_MESSAGES_AFTER_SUMMARY: int = 6
 
     class Config:
         env_file = ".env"
