@@ -1,19 +1,24 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from app.services.long_term_memory import long_term_memory_service
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.llm_service import llm_service
 from app.services.memory_service import memory_service
+from app.core.logger import setup_logger
+
+logger = setup_logger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 @router.post("/", response_model=ChatResponse)
 def chat(request: ChatRequest):
-
+ try:
     conversation_id = memory_service.get_or_create_conversation(
         request.conversation_id
     )
+
+    logger.info(f"Chat request received | conversation_id={conversation_id}")
 
     memory_service.add_message(
         conversation_id,
@@ -46,4 +51,12 @@ def chat(request: ChatRequest):
         memory_service.compress_conversation(conversation_id, summary)
 
 
+
     return ChatResponse(reply=reply, conversation_id=conversation_id)
+ except Exception as e:
+     logger.exception("chat request failed")
+     raise HTTPException(
+         status_code=500,
+         detail="Chat service failed. Please try again.",
+
+     )
