@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     OPENAI_MODEL:str = "gpt-40-mini"
 
+    MAX_HISTORY_MESSAGES: int = 10
+
     class Config:
         env_file = ".env"
 
