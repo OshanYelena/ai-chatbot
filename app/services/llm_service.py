@@ -1,0 +1,24 @@
+from openai import OpenAI
+
+from app.core.config import settings
+
+class LLMService:
+    def __init__(self):
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.model = settings.OPENAI_MODEL
+
+    def generate_reply(self, message:str) -> str:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{
+                "role": "system",
+                "content":" You are a helpful, friendly AI chatbot"
+            },{
+                "role": "user",
+                "content": message
+            }]
+
+        )
+        return response.choices[0].message.content
+
+llm_service = LLMService()
