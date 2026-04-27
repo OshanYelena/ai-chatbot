@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     SUMMARY_TRIGGER_MESSAGES: int = 12
     RECENT_MESSAGES_AFTER_SUMMARY: int = 6
 
+    DATABASE_URL: str
+
     class Config:
         env_file = ".env"
 
