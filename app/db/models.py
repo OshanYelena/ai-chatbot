@@ -8,7 +8,7 @@ from app.db.database import Base
 
 
 class Conversation(Base):
-    __tablename__ = "conversations"
+    __tablename__ = "Conversations"
     id = Column(String, primary_key=True, default=lambda : str (uuid.uuid4()))
     summary = Column(Text, default="")
     created_at = Column(DateTime, default=datetime.utcnow())
