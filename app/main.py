@@ -1,7 +1,10 @@
 from fastapi import FastAPI
+from app.core.config import settings
+
 
 app = FastAPI(
-    title="Simple AI Chatbot",
+    title= settings.APP_Name,
+    version=settings.APP_VERSION,
     description="A production-style hello world chatbot backend"
 )
 
@@ -9,7 +12,8 @@ app = FastAPI(
 @app.get("/")
 async def root():
     return {
-        "message": "Simple AI Chatbot API is running"
+        "message": f"{settings.APP_Name} API is running",
+        "environment": settings.ENVIRONMENT
     }
 
 @app.get("/health")
