@@ -1,9 +1,6 @@
 from fastapi import FastAPI
 from app.core.config import settings
 from app.api.v1.chat import router as chat_router
-from app.db.database import engine, Base
-
-Base.metadata.create_all(bind=engine)
 
 
 app = FastAPI(
