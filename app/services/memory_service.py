@@ -1,73 +1,97 @@
-import uuid
-from typing import Dict, List
+from typing import List
+
 from app.core.config import settings
+from app.repositories.conversation_repository import ConversationRepository
 
 
 class MemoryService:
-    def __init__(self):
-        self.store: Dict[str, List[dict]] = {}
-        self.summaries: Dict[str, str] ={}
+    def get_or_create_conversation(self, repo: ConversationRepository, conversation_id: str | None) -> str:
+        conversation = repo.get_or_create_conversation(conversation_id)
+        return conversation.id
 
-    def get_or_create_conversation(self, conversation_id : str | None) -> str:
-        if conversation_id and conversation_id in self.store:
-            return conversation_id
+    def add_message(
+        self,
+        repo: ConversationRepository,
+        conversation_id: str,
+        role: str,
+        content: str,
+    ):
+        repo.add_message(conversation_id, role, content)
 
-        new_id = str(uuid.uuid4())
-        self.store[new_id] = []
-        self.summaries[new_id] = ""
-        return new_id
+    def get_messages(self, repo: ConversationRepository, conversation_id: str) -> List[dict]:
+        messages = repo.get_messages(conversation_id)
 
-    def add_message(self, conversation_id :str , role :str, content: str):
-        self.store[conversation_id].append({
-            "role": role,
-            "content": content
-        })
-
-    def get_messages(self, conversation_id: str) -> list:
-        return self.store.get(conversation_id, [])
-
-    def get_summary(self, conversation_id:str) -> str:
-        return self.summaries.get(conversation_id, "")
-
-    def update_summary(self, conversation_id: str, summary: str):
-         self.summaries[conversation_id] = summary
-
-    def should_summarize(self, conversation_id: str) -> bool:
-        messages = self.get_messages(conversation_id)
-        return len(messages) >= settings.SUMMARY_TRIGGER_MESSAGES
-
-    def compress_conversation(self, conversation_id:str, summary: str):
-        recent_messages = self.get_messages(conversation_id)[
-            -settings.RECENT_MESSAGES_AFTER_SUMMARY:
+        return [
+            {
+                "role": message.role,
+                "content": message.content,
+            }
+            for message in messages
         ]
-        self.summaries[conversation_id] = summary
-        self.store[conversation_id] = recent_messages
 
-    def build_context_messages(self, conversation_id:str) -> List[dict]:
-        from app.services.long_term_memory import long_term_memory_service
+    def should_summarize(self, repo: ConversationRepository, conversation_id: str) -> bool:
+        message_count = repo.get_message_count(conversation_id)
+        return message_count >= settings.SUMMARY_TRIGGER_MESSAGES
+
+    def compress_conversation(
+        self,
+        repo: ConversationRepository,
+        conversation_id: str,
+        summary: str,
+    ):
+        repo.update_summary(conversation_id, summary)
+        repo.compress_conversation(
+            conversation_id,
+            settings.RECENT_MESSAGES_AFTER_SUMMARY,
+        )
+
+    def build_context_messages(
+        self,
+        repo: ConversationRepository,
+        conversation_id: str,
+    ) -> List[dict]:
         messages: List[dict] = []
 
-        memory_text = long_term_memory_service.format_memory_for_prompt(conversation_id)
-        if memory_text:
-            messages.append({
-                "role": "system",
-                "content": memory_text,
-            })
+        long_term_memory = repo.get_long_term_memory(conversation_id)
 
-        summary = self.get_summary(conversation_id)
+        if long_term_memory:
+            memory_text = "\n".join(
+                [f"{key}: {value}" for key, value in long_term_memory.items()]
+            )
+
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"User known facts:\n{memory_text}",
+                }
+            )
+
+        summary = repo.get_summary(conversation_id)
+
         if summary:
-            messages.append({
-                "role": "system",
-                "content": f"Previous conversation summary: {summary}"
-            })
+            messages.append(
+                {
+                    "role": "system",
+                    "content": f"Previous conversation summary: {summary}",
+                }
+            )
 
-        messages.extend(self.get_messages(conversation_id)[-settings.MAX_HISTORY_MESSAGES: ])
+        recent_messages = repo.get_recent_messages(
+            conversation_id,
+            settings.MAX_HISTORY_MESSAGES,
+        )
+
+        messages.extend(
+            [
+                {
+                    "role": message.role,
+                    "content": message.content,
+                }
+                for message in recent_messages
+            ]
+        )
+
         return messages
 
 
-    def get_recent_messages(self, conversation_id : str):
-        messages = self.get_messages(conversation_id)
-        return messages[-settings.MAX_HISTORY_MESSAGES: ]
-
 memory_service = MemoryService()
-
