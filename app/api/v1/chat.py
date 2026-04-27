@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.services.long_term_memory import long_term_memory_service
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.llm_service import llm_service
 from app.services.memory_service import memory_service
@@ -19,6 +20,15 @@ def chat(request: ChatRequest):
         role="user",
         content=request.message
     )
+
+    extracted_facts = llm_service.extract_user_facts(request.message)
+
+    for key, value in extracted_facts.items():
+        long_term_memory_service.update_memory(
+            conversation_id,
+            key,
+            value
+        )
 
     context_messages = memory_service.build_context_messages(conversation_id)
 
