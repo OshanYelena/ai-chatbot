@@ -1,7 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.api.v1.chat import router as chat_router
-
+from app.db.database import get_db
+from app.db.health import check_db_connection
 
 app = FastAPI(
     title= settings.APP_Name,
@@ -20,8 +23,10 @@ async def root():
     }
 
 @app.get("/health")
-def health_check():
-    return {
-        "status": "healthy"
 
+def health_check(db: Session = Depends(get_db)):
+    check_db_connection(db)
+    return {
+        "status": "healthy",
+        "database": "connected",
     }
