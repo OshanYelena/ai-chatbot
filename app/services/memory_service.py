@@ -1,5 +1,6 @@
 import uuid
 from typing import Dict, List
+from app.core.config import settings
 
 
 class MemoryService:
@@ -22,6 +23,10 @@ class MemoryService:
 
     def get_messages(self, conversation_id: str) -> list:
         return self.store.get(conversation_id, [])
+
+    def get_recent_messages(self, conversation_id : str):
+        messages = self.get_messages(conversation_id)
+        return messages[-settings.MAX_HISTORY_MESSAGES: ]
 
 memory_service = MemoryService()
 
