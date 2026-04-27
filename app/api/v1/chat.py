@@ -1,62 +1,89 @@
-from fastapi import APIRouter, HTTPException
-
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.db.database import get_db
+from app.repositories.conversation_repository import ConversationRepository
 from app.services.long_term_memory import long_term_memory_service
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.llm_service import llm_service
 from app.services.memory_service import memory_service
 from app.core.logger import setup_logger
 
-logger = setup_logger(__name__)
+
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
+logger = setup_logger(__name__)
 
 
 @router.post("/", response_model=ChatResponse)
-def chat(request: ChatRequest):
- try:
-    conversation_id = memory_service.get_or_create_conversation(
-        request.conversation_id
-    )
 
-    logger.info(f"Chat request received | conversation_id={conversation_id}")
+def chat(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+):
 
-    memory_service.add_message(
-        conversation_id,
-        role="user",
-        content=request.message
-    )
-
-    extracted_facts = llm_service.extract_user_facts(request.message)
-
-    for key, value in extracted_facts.items():
-        long_term_memory_service.update_memory(
-            conversation_id,
-            key,
-            value
+    try:
+        repo = ConversationRepository(db)
+        conversation_id = memory_service.get_or_create_conversation(
+            repo=repo,
+            conversation_id=request.conversation_id,
         )
 
-    context_messages = memory_service.build_context_messages(conversation_id)
+        logger.info(f"Chat request received | conversation_id={conversation_id}")
 
-    reply = llm_service.generate_reply(context_messages)
+        memory_service.add_message(
+            repo=repo,
+            conversation_id=conversation_id,
+            role="user",
+            content=request.message,
+        )
 
-    memory_service.add_message(
-        conversation_id,
-        role="assistant",
-        content=reply
-    )
+        extracted_facts = llm_service.extract_user_facts(request.message)
 
-    if memory_service.should_summarize(conversation_id):
-        full_messages = memory_service.get_messages(conversation_id)
-        summary = llm_service.summarize_messages(full_messages)
-        memory_service.compress_conversation(conversation_id, summary)
+        for key, value in extracted_facts.items():
 
+            long_term_memory_service.update_memory(
+                repo=repo,
+                conversation_id=conversation_id,
+                key=key,
+                value=value,
+            )
 
+        context_messages = memory_service.build_context_messages(
+            repo=repo,
+            conversation_id=conversation_id,
+        )
+        reply = llm_service.generate_reply(context_messages)
 
-    return ChatResponse(reply=reply, conversation_id=conversation_id)
- except Exception as e:
-     logger.exception("chat request failed")
-     raise HTTPException(
-         status_code=500,
-         detail="Chat service failed. Please try again.",
+        memory_service.add_message(
+            repo=repo,
+            conversation_id=conversation_id,
+            role="assistant",
+            content=reply,
+        )
 
-     )
+        if memory_service.should_summarize(
+            repo=repo,
+            conversation_id=conversation_id,
+        ):
+            full_messages = memory_service.get_messages(
+                repo=repo,
+                conversation_id=conversation_id,
+            )
+            summary = llm_service.summarize_messages(full_messages)
+            memory_service.compress_conversation(
+                repo=repo,
+                conversation_id=conversation_id,
+                summary=summary,
+            )
+
+        return ChatResponse(
+            reply=reply,
+            conversation_id=conversation_id,
+        )
+
+    except Exception:
+        logger.exception("Chat request failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Chat service failed. Please try again.",
+        )
