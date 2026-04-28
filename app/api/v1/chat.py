@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+
+from app.core.logger import setup_logger
+from app.core.rate_limiter import limiter
 from app.db.database import get_db
 from app.repositories.conversation_repository import ConversationRepository
-from app.services.long_term_memory import long_term_memory_service
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.llm_service import llm_service
 from app.services.memory_service import memory_service
-from app.core.logger import setup_logger
-from app.core.rate_limiter import limiter
-
+from app.services.long_term_memory import long_term_memory_service
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = setup_logger(__name__)
@@ -17,8 +17,8 @@ logger = setup_logger(__name__)
 @router.post("/", response_model=ChatResponse)
 @limiter.limit("10/minute")
 def chat(
-    payload: ChatRequest,
     request: Request,
+    payload: ChatRequest,
     db: Session = Depends(get_db),
 ):
     trace_id = request.state.trace_id
@@ -28,22 +28,18 @@ def chat(
 
         conversation_id = memory_service.get_or_create_conversation(
             repo=repo,
+            user_id=payload.user_id,
             conversation_id=payload.conversation_id,
         )
+
         logger.info(
-
-            "Chat request received",
-
+            "chat_request",
             extra={
-
                 "trace_id": trace_id,
-
                 "conversation_id": conversation_id,
-
-                "event": "Chat request received",
-
+                "user_id": payload.user_id,
+                "event": "chat_request",
             },
-
         )
 
         memory_service.add_message(
@@ -53,22 +49,29 @@ def chat(
             content=payload.message,
         )
 
-        extracted_facts = llm_service.extract_user_facts(payload.message, trace_id)
+        extracted_facts = llm_service.extract_user_facts(
+            payload.message,
+            trace_id,
+        )
 
         for key, value in extracted_facts.items():
             long_term_memory_service.update_memory(
                 repo=repo,
-                conversation_id=conversation_id,
+                user_id=payload.user_id,
                 key=key,
                 value=value,
             )
 
         context_messages = memory_service.build_context_messages(
             repo=repo,
+            user_id=payload.user_id,
             conversation_id=conversation_id,
         )
 
-        reply = llm_service.generate_reply(context_messages, trace_id)
+        reply = llm_service.generate_reply(
+            context_messages,
+            trace_id,
+        )
 
         memory_service.add_message(
             repo=repo,
@@ -86,7 +89,10 @@ def chat(
                 conversation_id=conversation_id,
             )
 
-            summary = llm_service.summarize_messages(full_messages, trace_id)
+            summary = llm_service.summarize_messages(
+                full_messages,
+                trace_id,
+            )
 
             memory_service.compress_conversation(
                 repo=repo,
@@ -96,22 +102,20 @@ def chat(
 
         return ChatResponse(
             reply=reply,
+            user_id=payload.user_id,
             conversation_id=conversation_id,
         )
 
-    except Exception:
+    except Exception as e:
         logger.exception(
-
-            "Chat request failed",
-
+            "chat_failed",
             extra={
-
                 "trace_id": trace_id,
-
-                "event": "Chat request failed",
-
+                "user_id": payload.user_id,
+                "conversation_id": payload.conversation_id,
+                "event": "chat_failed",
+                "error_message": str(e)
             },
-
         )
         raise HTTPException(
             status_code=500,

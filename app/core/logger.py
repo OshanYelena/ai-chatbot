@@ -1,26 +1,58 @@
 import logging
 import json
+import traceback
 from datetime import datetime
 
 
 class JsonFormatter(logging.Formatter):
+
     def format(self, record: logging.LogRecord) -> str:
+
         log_record = {
+
             "timestamp": datetime.utcnow().isoformat(),
+
             "level": record.levelname,
+
             "service": "ai-chatbot",
+
             "logger": record.name,
+
             "message": record.getMessage(),
+
         }
 
-        if hasattr(record, "trace_id"):
-            log_record["trace_id"] = record.trace_id
+        for field in [
 
-        if hasattr(record, "conversation_id"):
-            log_record["conversation_id"] = record.conversation_id
+            "trace_id",
 
-        if hasattr(record, "event"):
-            log_record["event"] = record.event
+            "conversation_id",
+
+            "user_id",
+
+            "event",
+
+            "model",
+
+            "extracted_keys",
+
+        ]:
+
+            if hasattr(record, field):
+
+                log_record[field] = getattr(record, field)
+
+        if record.exc_info:
+
+            log_record["exception"] = {
+
+                "type": record.exc_info[0].__name__,
+
+                "message": str(record.exc_info[1]),
+
+                "traceback": traceback.format_exception(*record.exc_info),
+
+            }
 
         return json.dumps(log_record)
 

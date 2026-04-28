@@ -5,8 +5,16 @@ from app.repositories.conversation_repository import ConversationRepository
 
 
 class MemoryService:
-    def get_or_create_conversation(self, repo: ConversationRepository, conversation_id: str | None) -> str:
-        conversation = repo.get_or_create_conversation(conversation_id)
+    def get_or_create_conversation(
+        self,
+        repo: ConversationRepository,
+        user_id: str,
+        conversation_id: str | None,
+    ) -> str:
+        conversation = repo.get_or_create_conversation(
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
         return conversation.id
 
     def add_message(
@@ -18,7 +26,11 @@ class MemoryService:
     ):
         repo.add_message(conversation_id, role, content)
 
-    def get_messages(self, repo: ConversationRepository, conversation_id: str) -> List[dict]:
+    def get_messages(
+        self,
+        repo: ConversationRepository,
+        conversation_id: str,
+    ) -> List[dict]:
         messages = repo.get_messages(conversation_id)
 
         return [
@@ -29,7 +41,11 @@ class MemoryService:
             for message in messages
         ]
 
-    def should_summarize(self, repo: ConversationRepository, conversation_id: str) -> bool:
+    def should_summarize(
+        self,
+        repo: ConversationRepository,
+        conversation_id: str,
+    ) -> bool:
         message_count = repo.get_message_count(conversation_id)
         return message_count >= settings.SUMMARY_TRIGGER_MESSAGES
 
@@ -48,11 +64,12 @@ class MemoryService:
     def build_context_messages(
         self,
         repo: ConversationRepository,
+        user_id: str,
         conversation_id: str,
     ) -> List[dict]:
         messages: List[dict] = []
 
-        long_term_memory = repo.get_long_term_memory(conversation_id)
+        long_term_memory = repo.get_long_term_memory(user_id)
 
         if long_term_memory:
             memory_text = "\n".join(

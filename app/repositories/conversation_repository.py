@@ -1,46 +1,88 @@
-from typing import List, Optional, Any, Type
-from sqlalchemy.orm import Session
+from typing import List, Optional
 
-from app.db.models import Conversation, ChatMessage, LongTermMemory
+from sqlalchemy.orm import Session
+from sqlalchemy import func, desc
+from app.db.models import User, Conversation, ChatMessage, LongTermMemory
 
 
 class ConversationRepository:
-    def __init__(self, db:Session):
+    def __init__(self, db: Session):
         self.db = db
 
-    def get_conversation(self, conversation_id) -> set[Type[Conversation]]:
+    # ---------- User ----------
+
+    def get_user(self, user_id: str) -> Optional[User]:
+        return (
+            self.db.query(User)
+            .filter(User.id == user_id)
+            .first()
+        )
+
+    def get_or_create_user(self, user_id: str) -> User:
+        user = self.get_user(user_id)
+
+        if user:
+            return user
+
+        user = User(id=user_id)
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    # ---------- Conversation ----------
+
+    def get_conversation(
+        self,
+        user_id: str,
+        conversation_id: str,
+    ) -> Optional[Conversation]:
         return (
             self.db.query(Conversation)
-            .filter(Conversation.id == conversation_id)
+            .filter(
+                Conversation.id == conversation_id,
+                Conversation.user_id == user_id,
+            )
             .first()
-
         )
-    def create_conversation(self) -> Conversation:
-        conversation = Conversation()
+
+    def create_conversation(self, user_id: str) -> Conversation:
+        self.get_or_create_user(user_id)
+
+        conversation = Conversation(user_id=user_id)
         self.db.add(conversation)
         self.db.commit()
         self.db.refresh(conversation)
         return conversation
 
-    def get_or_create_conversation(self, conversation_id: Optional[str]) -> Conversation:
+    def get_or_create_conversation(
+        self,
+        user_id: str,
+        conversation_id: Optional[str],
+    ) -> Conversation:
+        self.get_or_create_user(user_id)
+
         if conversation_id:
-            conversation = self.get_conversation(conversation_id)
+            conversation = self.get_conversation(user_id, conversation_id)
             if conversation:
                 return conversation
 
-        return self.create_conversation()
+        return self.create_conversation(user_id)
 
+    # ---------- Messages ----------
 
-    def add_message(self, conversation_id: str, role:str, content:str) -> ChatMessage:
+    def add_message(
+        self,
+        conversation_id: str,
+        role: str,
+        content: str,
+    ) -> ChatMessage:
         message = ChatMessage(
-
             conversation_id=conversation_id,
-
             role=role,
-
             content=content,
-
         )
+
         self.db.add(message)
         self.db.commit()
         self.db.refresh(message)
@@ -52,18 +94,21 @@ class ConversationRepository:
             .filter(ChatMessage.conversation_id == conversation_id)
             .order_by(ChatMessage.created_at.asc())
             .all()
-
         )
 
-    def get_recent_messages(self, conversation_id: str, limit: int) -> List[ChatMessage]:
+    def get_recent_messages(
+        self,
+        conversation_id: str,
+        limit: int,
+    ) -> List[ChatMessage]:
         messages = (
             self.db.query(ChatMessage)
             .filter(ChatMessage.conversation_id == conversation_id)
             .order_by(ChatMessage.created_at.desc())
             .limit(limit)
             .all()
-
         )
+
         return list(reversed(messages))
 
     def get_message_count(self, conversation_id: str) -> int:
@@ -73,25 +118,40 @@ class ConversationRepository:
             .count()
         )
 
+    # ---------- Summary ----------
+
     def get_summary(self, conversation_id: str) -> str:
-        conversation = self.get_conversation(conversation_id)
+        conversation = (
+            self.db.query(Conversation)
+            .filter(Conversation.id == conversation_id)
+            .first()
+        )
+
         return conversation.summary if conversation and conversation.summary else ""
 
     def update_summary(self, conversation_id: str, summary: str):
-        conversation = self.get_conversation(conversation_id)
+        conversation = (
+            self.db.query(Conversation)
+            .filter(Conversation.id == conversation_id)
+            .first()
+        )
+
         if not conversation:
             return
+
         conversation.summary = summary
         self.db.commit()
         self.db.refresh(conversation)
 
     def compress_conversation(self, conversation_id: str, keep_last: int):
         recent_messages = self.get_recent_messages(conversation_id, keep_last)
+
         self.db.query(ChatMessage).filter(
             ChatMessage.conversation_id == conversation_id
-
         ).delete()
+
         self.db.commit()
+
         for message in recent_messages:
             new_message = ChatMessage(
                 conversation_id=conversation_id,
@@ -99,22 +159,42 @@ class ConversationRepository:
                 content=message.content,
             )
             self.db.add(new_message)
+
         self.db.commit()
 
-    def upsert_long_term_memory(self, conversation_id: str, key: str, value: str):
+    # ---------- Long-Term Memory ----------
+
+    def get_long_term_memory(self, user_id: str) -> dict:
+        memories = (
+            self.db.query(LongTermMemory)
+            .filter(LongTermMemory.user_id == user_id)
+            .all()
+        )
+
+        return {memory.key: memory.value for memory in memories}
+
+    def upsert_long_term_memory(
+        self,
+        user_id: str,
+        key: str,
+        value: str,
+    ):
+        self.get_or_create_user(user_id)
+
         memory = (
             self.db.query(LongTermMemory)
             .filter(
-                LongTermMemory.conversation_id == conversation_id,
+                LongTermMemory.user_id == user_id,
                 LongTermMemory.key == key,
             )
             .first()
         )
+
         if memory:
             memory.value = str(value)
         else:
             memory = LongTermMemory(
-                conversation_id=conversation_id,
+                user_id=user_id,
                 key=key,
                 value=str(value),
             )
@@ -122,10 +202,81 @@ class ConversationRepository:
 
         self.db.commit()
 
-    def get_long_term_memory(self, conversation_id: str) -> dict:
-        memories = (
-            self.db.query(LongTermMemory)
-            .filter(LongTermMemory.conversation_id == conversation_id)
-            .all()
+    def list_conversations_by_user(self, user_id: str):
+
+        latest_message_subquery = (
+
+            self.db.query(
+
+                ChatMessage.conversation_id.label("conversation_id"),
+
+                func.max(ChatMessage.created_at).label("last_activity_at"),
+
+            )
+
+            .group_by(ChatMessage.conversation_id)
+
+            .subquery()
+
         )
-        return {memory.key: memory.value for memory in memories}
+
+        results = (
+
+            self.db.query(
+
+                Conversation,
+
+                latest_message_subquery.c.last_activity_at,
+
+            )
+
+            .outerjoin(
+
+                latest_message_subquery,
+
+                Conversation.id == latest_message_subquery.c.conversation_id,
+
+            )
+
+            .filter(Conversation.user_id == user_id)
+
+            .order_by(desc(latest_message_subquery.c.last_activity_at))
+
+            .all()
+
+        )
+
+        conversations = []
+
+        for conversation, last_activity_at in results:
+            last_message = (
+
+                self.db.query(ChatMessage)
+
+                .filter(ChatMessage.conversation_id == conversation.id)
+
+                .order_by(ChatMessage.created_at.desc())
+
+                .first()
+
+            )
+
+            conversations.append(
+
+                {
+
+                    "conversation_id": conversation.id,
+
+                    "summary": conversation.summary,
+
+                    "created_at": conversation.created_at,
+
+                    "last_activity_at": last_activity_at or conversation.created_at,
+
+                    "last_message": last_message.content if last_message else None,
+
+                }
+
+            )
+
+        return conversations
