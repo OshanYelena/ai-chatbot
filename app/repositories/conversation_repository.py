@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -174,10 +175,11 @@ class ConversationRepository:
         return {memory.key: memory.value for memory in memories}
 
     def upsert_long_term_memory(
-        self,
-        user_id: str,
-        key: str,
-        value: str,
+            self,
+            user_id: str,
+            key: str,
+            value: str,
+            source: str = "llm_extraction",
     ):
         self.get_or_create_user(user_id)
 
@@ -191,12 +193,28 @@ class ConversationRepository:
         )
 
         if memory:
-            memory.value = str(value)
+            # CASE 1: Same value → reinforce confidence
+            if memory.value == value:
+                if memory.confidence == "low":
+                    memory.confidence = "medium"
+                elif memory.confidence == "medium":
+                    memory.confidence = "high"
+
+            # CASE 2: Conflict → do NOT overwrite
+            else:
+                # Keep old value, log conflict via confidence drop
+                memory.confidence = "low"
+
+            memory.updated_at = datetime.utcnow()
+
         else:
+            # CASE 3: New memory
             memory = LongTermMemory(
                 user_id=user_id,
                 key=key,
-                value=str(value),
+                value=value,
+                confidence="medium",
+                source=source,
             )
             self.db.add(memory)
 
