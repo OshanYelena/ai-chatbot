@@ -62,12 +62,15 @@ class ChatMessage(Base):
 
 
 class LongTermMemory(Base):
+
     __tablename__ = "long_term_memories"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     key = Column(String, nullable=False)
     value = Column(Text, nullable=False)
+    confidence = Column(String, nullable=False, default="medium")
+    source = Column(String, nullable=False, default="llm_extraction")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)
 
