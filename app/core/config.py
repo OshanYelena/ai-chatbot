@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     SUMMARY_TRIGGER_MESSAGES: int = 12
     RECENT_MESSAGES_AFTER_SUMMARY: int = 6
 
+    OPENAI_TIMEOUT_SECONDS = 20
+    OPENAI_MAX_RETRIES = 2
+
     DATABASE_URL: str
 
     class Config:
