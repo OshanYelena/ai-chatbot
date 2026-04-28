@@ -7,7 +7,7 @@ from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.llm_service import llm_service
 from app.services.memory_service import memory_service
 from app.core.logger import setup_logger
-
+from app.core.rate_limiter import limiter
 
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -15,6 +15,7 @@ logger = setup_logger(__name__)
 
 
 @router.post("/", response_model=ChatResponse)
+@limiter.limit("10/minute")
 def chat(
     payload: ChatRequest,
     request: Request,
