@@ -29,9 +29,20 @@ def chat(
             repo=repo,
             conversation_id=payload.conversation_id,
         )
-
         logger.info(
-            f"Chat request received | trace_id={trace_id} | conversation_id={conversation_id}"
+
+            "Chat request received",
+
+            extra={
+
+                "trace_id": trace_id,
+
+                "conversation_id": conversation_id,
+
+                "event": "Chat request received",
+
+            },
+
         )
 
         memory_service.add_message(
@@ -88,7 +99,19 @@ def chat(
         )
 
     except Exception:
-        logger.exception(f"Chat request failed | trace_id={trace_id}")
+        logger.exception(
+
+            "Chat request failed",
+
+            extra={
+
+                "trace_id": trace_id,
+
+                "event": "Chat request failed",
+
+            },
+
+        )
         raise HTTPException(
             status_code=500,
             detail="Chat service failed. Please try again.",
