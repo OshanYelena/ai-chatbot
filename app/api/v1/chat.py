@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.db.database import get_db
 from app.repositories.conversation_repository import ConversationRepository
@@ -18,17 +18,23 @@ logger = setup_logger(__name__)
 
 def chat(
     request: ChatRequest,
+    http_request= Request,
     db: Session = Depends(get_db),
 ):
 
     try:
+        trace_id = http_request.state.trace_id
         repo = ConversationRepository(db)
         conversation_id = memory_service.get_or_create_conversation(
             repo=repo,
             conversation_id=request.conversation_id,
         )
 
-        logger.info(f"Chat request received | conversation_id={conversation_id}")
+        logger.info(
+
+            f"Chat request received | trace_id={trace_id} | conversation_id={conversation_id}"
+
+        )
 
         memory_service.add_message(
             repo=repo,
@@ -82,7 +88,7 @@ def chat(
         )
 
     except Exception:
-        logger.exception("Chat request failed")
+        logger.exception(f"Chat request failed | trace_id={trace_id}")
         raise HTTPException(
             status_code=500,
             detail="Chat service failed. Please try again.",
