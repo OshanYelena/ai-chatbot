@@ -11,7 +11,12 @@ logger = setup_logger(__name__)
 
 class LLMService:
     def __init__(self):
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.client = OpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            timeout=settings.OPENAI_TIMEOUT_SECONDS,
+            max_retries=settings.OPENAI_MAX_RETRIES,
+
+        )
         self.model = settings.OPENAI_MODEL
 
     def generate_reply(self, messages: List[dict], trace_id: str) -> str:
