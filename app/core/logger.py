@@ -1,4 +1,28 @@
 import logging
+import json
+from datetime import datetime
+
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        log_record = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "level": record.levelname,
+            "service": "ai-chatbot",
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+
+        if hasattr(record, "trace_id"):
+            log_record["trace_id"] = record.trace_id
+
+        if hasattr(record, "conversation_id"):
+            log_record["conversation_id"] = record.conversation_id
+
+        if hasattr(record, "event"):
+            log_record["event"] = record.event
+
+        return json.dumps(log_record)
 
 
 def setup_logger(name: str):
@@ -9,13 +33,9 @@ def setup_logger(name: str):
 
     logger.setLevel(logging.INFO)
 
-    formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-    )
+    handler = logging.StreamHandler()
+    handler.setFormatter(JsonFormatter())
 
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-
-    logger.addHandler(console_handler)
+    logger.addHandler(handler)
 
     return logger
