@@ -11,6 +11,8 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi import _rate_limit_exceeded_handler
 
+from app.api.v1.conversations import router as conversations_router
+
 app = FastAPI(
     title= settings.APP_Name,
     version=settings.APP_VERSION,
@@ -22,6 +24,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(TraceMiddleware)
 app.include_router(chat_router, prefix="/api/v1")
+app.include_router(conversations_router, prefix="/api/v1")
 
 
 @app.get("/")
