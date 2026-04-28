@@ -5,6 +5,11 @@ from app.core.config import settings
 from app.api.v1.chat import router as chat_router
 from app.db.database import get_db
 from app.db.health import check_db_connection
+from app.middleware.trace_middleware import TraceMiddleware
+from app.core.rate_limiter import limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi import _rate_limit_exceeded_handler
 
 app = FastAPI(
     title= settings.APP_Name,
@@ -12,6 +17,10 @@ app = FastAPI(
     description="A production-style hello world chatbot backend"
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(TraceMiddleware)
 app.include_router(chat_router, prefix="/api/v1")
 
 

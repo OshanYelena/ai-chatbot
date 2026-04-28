@@ -11,11 +11,25 @@ logger = setup_logger(__name__)
 
 class LLMService:
     def __init__(self):
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.client = OpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            timeout=settings.OPENAI_TIMEOUT_SECONDS,
+            max_retries=settings.OPENAI_MAX_RETRIES,
+
+        )
         self.model = settings.OPENAI_MODEL
 
-    def generate_reply(self, messages: List[dict]) -> str:
+    def generate_reply(self, messages: List[dict], trace_id: str) -> str:
         try:
+            logger.info(
+                "llm_request_started",
+                extra={
+                    "trace_id": trace_id,
+                    "event": "llm_request_started",
+                    "model": self.model,
+                },
+            )
+
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -29,14 +43,38 @@ class LLMService:
                 max_tokens=500,
             )
 
+            logger.info(
+                "llm_request_success",
+                extra={
+                    "trace_id": trace_id,
+                    "event": "llm_request_success",
+                    "model": self.model,
+                },
+            )
+
             return response.choices[0].message.content or ""
 
         except Exception:
-            logger.exception("LLM reply generation failed")
+            logger.exception(
+                "llm_request_failed",
+                extra={
+                    "trace_id": trace_id,
+                    "event": "llm_request_failed",
+                    "model": self.model,
+                },
+            )
             raise
 
-    def summarize_messages(self, messages: List[dict]) -> str:
+    def summarize_messages(self, messages: List[dict], trace_id: str) -> str:
         try:
+            logger.info(
+                "llm_summary_started",
+                extra={
+                    "trace_id": trace_id,
+                    "event": "llm_summary_started",
+                },
+            )
+
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -57,14 +95,36 @@ class LLMService:
                 max_tokens=300,
             )
 
+            logger.info(
+                "llm_summary_success",
+                extra={
+                    "trace_id": trace_id,
+                    "event": "llm_summary_success",
+                },
+            )
+
             return response.choices[0].message.content or ""
 
         except Exception:
-            logger.exception("Conversation summarization failed")
+            logger.exception(
+                "llm_summary_failed",
+                extra={
+                    "trace_id": trace_id,
+                    "event": "llm_summary_failed",
+                },
+            )
             raise
 
-    def extract_user_facts(self, message: str) -> dict:
+    def extract_user_facts(self, message: str, trace_id: str) -> dict:
         try:
+            logger.info(
+                "llm_extract_started",
+                extra={
+                    "trace_id": trace_id,
+                    "event": "llm_extract_started",
+                },
+            )
+
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -86,10 +146,27 @@ class LLMService:
             )
 
             content = response.choices[0].message.content or "{}"
-            return json.loads(content)
+            result = json.loads(content)
+
+            logger.info(
+                "llm_extract_success",
+                extra={
+                    "trace_id": trace_id,
+                    "event": "llm_extract_success",
+                    "extracted_keys": list(result.keys()),
+                },
+            )
+
+            return result
 
         except Exception:
-            logger.exception("User fact extraction failed")
+            logger.exception(
+                "llm_extract_failed",
+                extra={
+                    "trace_id": trace_id,
+                    "event": "llm_extract_failed",
+                },
+            )
             return {}
 
 
