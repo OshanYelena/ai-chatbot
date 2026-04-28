@@ -52,7 +52,7 @@ def chat(
             content=payload.message,
         )
 
-        extracted_facts = llm_service.extract_user_facts(payload.message)
+        extracted_facts = llm_service.extract_user_facts(payload.message, trace_id)
 
         for key, value in extracted_facts.items():
             long_term_memory_service.update_memory(
@@ -67,7 +67,7 @@ def chat(
             conversation_id=conversation_id,
         )
 
-        reply = llm_service.generate_reply(context_messages)
+        reply = llm_service.generate_reply(context_messages, trace_id)
 
         memory_service.add_message(
             repo=repo,
@@ -85,7 +85,7 @@ def chat(
                 conversation_id=conversation_id,
             )
 
-            summary = llm_service.summarize_messages(full_messages)
+            summary = llm_service.summarize_messages(full_messages, trace_id)
 
             memory_service.compress_conversation(
                 repo=repo,
