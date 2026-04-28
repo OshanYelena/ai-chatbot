@@ -106,13 +106,15 @@ def chat(
             conversation_id=conversation_id,
         )
 
-    except Exception:
+    except Exception as e:
         logger.exception(
             "chat_failed",
             extra={
                 "trace_id": trace_id,
                 "user_id": payload.user_id,
+                "conversation_id": payload.conversation_id,
                 "event": "chat_failed",
+                "error_message": str(e)
             },
         )
         raise HTTPException(
