@@ -1,7 +1,7 @@
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
-
+from sqlalchemy import func, desc
 from app.db.models import User, Conversation, ChatMessage, LongTermMemory
 
 
@@ -201,3 +201,82 @@ class ConversationRepository:
             self.db.add(memory)
 
         self.db.commit()
+
+    def list_conversations_by_user(self, user_id: str):
+
+        latest_message_subquery = (
+
+            self.db.query(
+
+                ChatMessage.conversation_id.label("conversation_id"),
+
+                func.max(ChatMessage.created_at).label("last_activity_at"),
+
+            )
+
+            .group_by(ChatMessage.conversation_id)
+
+            .subquery()
+
+        )
+
+        results = (
+
+            self.db.query(
+
+                Conversation,
+
+                latest_message_subquery.c.last_activity_at,
+
+            )
+
+            .outerjoin(
+
+                latest_message_subquery,
+
+                Conversation.id == latest_message_subquery.c.conversation_id,
+
+            )
+
+            .filter(Conversation.user_id == user_id)
+
+            .order_by(desc(latest_message_subquery.c.last_activity_at))
+
+            .all()
+
+        )
+
+        conversations = []
+
+        for conversation, last_activity_at in results:
+            last_message = (
+
+                self.db.query(ChatMessage)
+
+                .filter(ChatMessage.conversation_id == conversation.id)
+
+                .order_by(ChatMessage.created_at.desc())
+
+                .first()
+
+            )
+
+            conversations.append(
+
+                {
+
+                    "conversation_id": conversation.id,
+
+                    "summary": conversation.summary,
+
+                    "created_at": conversation.created_at,
+
+                    "last_activity_at": last_activity_at or conversation.created_at,
+
+                    "last_message": last_message.content if last_message else None,
+
+                }
+
+            )
+
+        return conversations
