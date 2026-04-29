@@ -9,6 +9,7 @@ from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.llm_service import llm_service
 from app.services.memory_service import memory_service
 from app.services.long_term_memory import long_term_memory_service
+from app.services.pending_memory_service import pending_memory_service
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = setup_logger(__name__)
@@ -41,6 +42,121 @@ def chat(
                 "event": "chat_request",
             },
         )
+
+        pending_conflicts = pending_memory_service.get_pending_conflicts(conversation_id)
+
+        if pending_conflicts:
+
+            decision = llm_service.detect_memory_confirmation(
+
+                payload.message,
+
+                trace_id,
+
+            )
+
+            if decision == "confirm":
+
+                updates = []
+
+                for conflict in pending_conflicts:
+                    result = long_term_memory_service.force_update_memory(
+
+                        repo=repo,
+
+                        user_id=payload.user_id,
+
+                        key=conflict["key"],
+
+                        value=conflict["new_value"],
+
+                    )
+
+                    updates.append(result)
+
+                pending_memory_service.clear_pending_conflicts(conversation_id)
+
+                reply = "Got it — I updated that memory."
+
+                memory_service.add_message(
+
+                    repo=repo,
+
+                    conversation_id=conversation_id,
+
+                    role="user",
+
+                    content=payload.message,
+
+                )
+
+                memory_service.add_message(
+
+                    repo=repo,
+
+                    conversation_id=conversation_id,
+
+                    role="assistant",
+
+                    content=reply,
+
+                )
+
+                return ChatResponse(
+
+                    reply=reply,
+
+                    user_id=payload.user_id,
+
+                    conversation_id=conversation_id,
+
+                )
+
+            if decision == "reject":
+                pending_memory_service.clear_pending_conflicts(conversation_id)
+
+                reply = "Got it — I kept the existing memory unchanged."
+
+                memory_service.add_message(
+
+                    repo=repo,
+
+                    conversation_id=conversation_id,
+
+                    role="user",
+
+                    content=payload.message,
+
+                )
+
+                memory_service.add_message(
+
+                    repo=repo,
+
+                    conversation_id=conversation_id,
+
+                    role="assistant",
+
+                    content=reply,
+
+                )
+
+                return ChatResponse(
+
+                    reply=reply,
+
+                    user_id=payload.user_id,
+
+                    conversation_id=conversation_id,
+
+                )
+
+
+
+
+
+
+
 
         memory_service.add_message(
             repo=repo,
@@ -78,6 +194,15 @@ def chat(
             if result.get("status") == "conflict"
 
         ]
+
+        if memory_conflicts:
+            pending_memory_service.set_pending_conflicts(
+
+                conversation_id,
+
+                memory_conflicts,
+
+            )
 
         context_messages = memory_service.build_context_messages(
             repo=repo,
