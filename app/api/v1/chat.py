@@ -28,6 +28,8 @@ def chat(
     try:
         repo = ConversationRepository(db)
 
+        repo.expire_old_pending_memory_conflicts()
+
         conversation_id = memory_service.get_or_create_conversation(
             repo=repo,
             user_id=payload.user_id,
