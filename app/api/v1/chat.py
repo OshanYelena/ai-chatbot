@@ -11,6 +11,7 @@ from app.services.memory_service import memory_service
 from app.services.long_term_memory import long_term_memory_service
 from app.services.pending_memory_service import pending_memory_service
 from app.services.confirmation_service import confirmation_service
+from app.services.eval_service import eval_service
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = setup_logger(__name__)
@@ -60,12 +61,16 @@ def chat(
 
             if decision is None:
                 decision = llm_service.detect_memory_confirmation(
-
                     payload.message,
-
                     trace_id,
-
                 )
+
+            eval_service.evaluate_confirmation_classification(
+                decision,
+                trace_id,
+
+            )
+
 
             if decision == "confirm":
 
@@ -179,13 +184,6 @@ def chat(
 
                 )
 
-
-
-
-
-
-
-
         memory_service.add_message(
             repo=repo,
             conversation_id=conversation_id,
@@ -196,6 +194,12 @@ def chat(
         extracted_facts = llm_service.extract_user_facts(
             payload.message,
             trace_id,
+        )
+
+        eval_service.evaluate_memory_extraction(
+            extracted_facts,
+            trace_id,
+
         )
 
         memory_update_results = []
@@ -265,6 +269,12 @@ def chat(
         reply = llm_service.generate_reply(
             context_messages,
             trace_id,
+        )
+
+        eval_service.evaluate_response(
+            reply,
+            trace_id,
+
         )
 
         memory_service.add_message(
