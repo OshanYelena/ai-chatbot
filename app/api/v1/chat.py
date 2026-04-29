@@ -115,7 +115,7 @@ def chat(
                     content=reply,
 
                 )
-
+                db.commit()
                 return ChatResponse(
 
                     reply=reply,
@@ -162,7 +162,7 @@ def chat(
                     content=reply,
 
                 )
-
+                db.commit()
                 return ChatResponse(
 
                     reply=reply,
