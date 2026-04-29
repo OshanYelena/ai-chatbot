@@ -1,8 +1,10 @@
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timedelta
+from typing import List, Optional, Type
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
+
+from app.core.config import settings
 from app.db.models import User, Conversation, ChatMessage, LongTermMemory
 from app.db.models import PendingMemoryConflict
 
@@ -478,15 +480,40 @@ class ConversationRepository:
     def get_pending_memory_conflicts(
             self,
             conversation_id: str,
-    ) -> list[PendingMemoryConflict]:
+    )-> list[Type[PendingMemoryConflict]]:
+        cutoff = datetime.utcnow() - timedelta(
+            hours=settings.PENDING_CONFLICT_TTL_HOURS
+        )
+
         return (
             self.db.query(PendingMemoryConflict)
             .filter(
                 PendingMemoryConflict.conversation_id == conversation_id,
                 PendingMemoryConflict.status == "pending",
+                PendingMemoryConflict.created_at >= cutoff,
             )
             .all()
         )
+
+    def expire_old_pending_memory_conflicts(self):
+        cutoff = datetime.utcnow() - timedelta(
+            hours=settings.PENDING_CONFLICT_TTL_HOURS
+        )
+
+        conflicts = (
+            self.db.query(PendingMemoryConflict)
+            .filter(
+                PendingMemoryConflict.status == "pending",
+                PendingMemoryConflict.created_at < cutoff,
+            )
+            .all()
+        )
+
+        for conflict in conflicts:
+            conflict.status = "expired"
+            conflict.resolved_at = datetime.utcnow()
+
+        self.db.flush()
 
     def resolve_pending_memory_conflicts(
             self,
