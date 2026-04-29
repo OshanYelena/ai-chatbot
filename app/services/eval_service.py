@@ -1,15 +1,19 @@
 from app.core.logger import setup_logger
 from opentelemetry import trace
+
 logger = setup_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 
 class EvalService:
     def evaluate_response(
-            self,
-            reply: str,
-            trace_id: str,
-            operation: str = "generate_reply",
+        self,
+        repo,
+        reply: str,
+        trace_id: str,
+        user_id: str | None = None,
+        conversation_id: str | None = None,
+        operation: str = "generate_reply",
     ) -> dict:
         with tracer.start_as_current_span("eval.response_quality") as span:
             result = {
@@ -23,13 +27,25 @@ class EvalService:
                 result["passed"] = False
                 result["issues"].append("empty_response")
 
-            if len(reply) < 5:
+            if len(reply or "") < 5:
                 result["passed"] = False
                 result["issues"].append("too_short")
 
-            if len(reply) > 3000:
+            if len(reply or "") > 3000:
                 result["passed"] = False
                 result["issues"].append("too_long")
+
+            repo.create_llm_eval_result(
+                trace_id=trace_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                operation=operation,
+                passed=result["passed"],
+                issues=result["issues"],
+                metadata={
+                    "reply_length": result["reply_length"],
+                },
+            )
 
             span.set_attribute("eval.operation", operation)
             span.set_attribute("eval.passed", result["passed"])
@@ -40,6 +56,8 @@ class EvalService:
                 "llm_eval_result",
                 extra={
                     "trace_id": trace_id,
+                    "user_id": user_id,
+                    "conversation_id": conversation_id,
                     "event": "llm_eval_result",
                     "operation": operation,
                     "eval_passed": result["passed"],
@@ -51,13 +69,18 @@ class EvalService:
             return result
 
     def evaluate_memory_extraction(
-            self,
-            extracted_facts: dict,
-            trace_id: str,
+        self,
+        repo,
+        extracted_facts: dict,
+        trace_id: str,
+        user_id: str | None = None,
+        conversation_id: str | None = None,
     ) -> dict:
+        operation = "extract_user_facts"
+
         with tracer.start_as_current_span("eval.memory_extraction") as span:
             result = {
-                "operation": "extract_user_facts",
+                "operation": operation,
                 "passed": True,
                 "issues": [],
                 "extracted_count": len(extracted_facts),
@@ -79,17 +102,33 @@ class EvalService:
                 if isinstance(value, (dict, list)):
                     result["issues"].append(f"nested_value:{key}")
 
-            span.set_attribute("eval.operation", "extract_user_facts")
+            repo.create_llm_eval_result(
+                trace_id=trace_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                operation=operation,
+                passed=result["passed"],
+                issues=result["issues"],
+                metadata={
+                    "extracted_count": result["extracted_count"],
+                    "extracted_keys": list(extracted_facts.keys()),
+                },
+            )
+
+            span.set_attribute("eval.operation", operation)
             span.set_attribute("eval.passed", result["passed"])
             span.set_attribute("eval.issues", ",".join(result["issues"]))
             span.set_attribute("eval.extracted_count", result["extracted_count"])
+            span.set_attribute("eval.extracted_keys", ",".join(extracted_facts.keys()))
 
             logger.info(
                 "memory_eval_result",
                 extra={
                     "trace_id": trace_id,
+                    "user_id": user_id,
+                    "conversation_id": conversation_id,
                     "event": "memory_eval_result",
-                    "operation": "extract_user_facts",
+                    "operation": operation,
                     "eval_passed": result["passed"],
                     "eval_issues": result["issues"],
                     "extracted_count": result["extracted_count"],
@@ -99,15 +138,20 @@ class EvalService:
             return result
 
     def evaluate_confirmation_classification(
-            self,
-            classification: str,
-            trace_id: str,
+        self,
+        repo,
+        classification: str,
+        trace_id: str,
+        user_id: str | None = None,
+        conversation_id: str | None = None,
     ) -> dict:
+        operation = "detect_memory_confirmation"
+
         with tracer.start_as_current_span("eval.confirmation_classification") as span:
             allowed = {"confirm", "reject", "unclear"}
 
             result = {
-                "operation": "detect_memory_confirmation",
+                "operation": operation,
                 "passed": classification in allowed,
                 "issues": [],
                 "classification": classification,
@@ -116,7 +160,19 @@ class EvalService:
             if classification not in allowed:
                 result["issues"].append("invalid_classification")
 
-            span.set_attribute("eval.operation", "detect_memory_confirmation")
+            repo.create_llm_eval_result(
+                trace_id=trace_id,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                operation=operation,
+                passed=result["passed"],
+                issues=result["issues"],
+                metadata={
+                    "classification": result["classification"],
+                },
+            )
+
+            span.set_attribute("eval.operation", operation)
             span.set_attribute("eval.passed", result["passed"])
             span.set_attribute("eval.issues", ",".join(result["issues"]))
             span.set_attribute("eval.classification", classification)
@@ -125,8 +181,10 @@ class EvalService:
                 "classification_eval_result",
                 extra={
                     "trace_id": trace_id,
+                    "user_id": user_id,
+                    "conversation_id": conversation_id,
                     "event": "classification_eval_result",
-                    "operation": "detect_memory_confirmation",
+                    "operation": operation,
                     "eval_passed": result["passed"],
                     "eval_issues": result["issues"],
                     "classification": classification,
