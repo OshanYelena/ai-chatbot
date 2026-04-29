@@ -10,13 +10,13 @@ class LongTermMemoryService:
         return repo.get_long_term_memory(user_id)
 
     def update_memory(
-        self,
-        repo: ConversationRepository,
-        user_id: str,
-        key: str,
-        value: str,
-    ):
-        repo.upsert_long_term_memory(
+            self,
+            repo: ConversationRepository,
+            user_id: str,
+            key: str,
+            value: str,
+    ) -> dict:
+        return repo.upsert_long_term_memory(
             user_id=user_id,
             key=key,
             value=value,
