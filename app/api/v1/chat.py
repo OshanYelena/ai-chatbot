@@ -295,6 +295,7 @@ def chat(
         )
 
     except Exception as e:
+        db.rollback()
         logger.exception(
             "chat_failed",
             extra={
