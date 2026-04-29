@@ -54,19 +54,56 @@ def chat(
             trace_id,
         )
 
+        memory_update_results = []
+
         for key, value in extracted_facts.items():
-            long_term_memory_service.update_memory(
+            result = long_term_memory_service.update_memory(
+
                 repo=repo,
+
                 user_id=payload.user_id,
+
                 key=key,
+
                 value=value,
+
             )
+
+            memory_update_results.append(result)
+
+        memory_conflicts = [
+
+            result for result in memory_update_results
+
+            if result.get("status") == "conflict"
+
+        ]
 
         context_messages = memory_service.build_context_messages(
             repo=repo,
             user_id=payload.user_id,
             conversation_id=conversation_id,
         )
+        if memory_conflicts:
+            conflict_text = "\n".join(
+                [
+                    (
+                        f"Memory conflict detected for '{conflict['key']}': "
+                        f"existing value is '{conflict['old_value']}', "
+                        f"new user claim is '{conflict['new_value']}'. "
+                        "Do not assume the new claim is true. Ask the user to clarify."
+                    )
+                    for conflict in memory_conflicts
+                ]
+            )
+
+            context_messages.insert(
+                0,
+                {
+                    "role": "system",
+                    "content": conflict_text,
+                },
+            )
 
         reply = llm_service.generate_reply(
             context_messages,
