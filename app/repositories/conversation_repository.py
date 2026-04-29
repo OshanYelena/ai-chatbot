@@ -1,8 +1,10 @@
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timedelta
+from typing import List, Optional, Type
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
+
+from app.core.config import settings
 from app.db.models import User, Conversation, ChatMessage, LongTermMemory
 from app.db.models import PendingMemoryConflict
 
@@ -216,17 +218,16 @@ class ConversationRepository:
             # Case 1: Same value → reinforce
 
             if memory.value == value:
+                memory.evidence_count += 1
 
-                if memory.confidence == "low":
-
-                    memory.confidence = "medium"
-
-                elif memory.confidence == "medium":
-
+                if memory.evidence_count >= 3:
                     memory.confidence = "high"
+                elif memory.evidence_count == 2:
+                    memory.confidence = "medium"
+                else:
+                    memory.confidence = "low"
 
                 memory.updated_at = datetime.utcnow()
-
                 self.db.flush()
 
                 return {
@@ -245,16 +246,22 @@ class ConversationRepository:
 
             # Case 2: Conflict → degrade carefully
 
-            if memory.confidence == "high":
+            # Case 2: Conflict → degrade based on source trust
+            if memory.source == "user_confirmed":
+                if memory.confidence == "high":
+                    memory.confidence = "medium"
+                elif memory.confidence == "medium":
+                    memory.confidence = "low"
+                else:
+                    memory.confidence = "low"
 
-                memory.confidence = "medium"
-
-            elif memory.confidence == "medium":
-
-                memory.confidence = "low"
+            elif memory.source == "llm_extraction":
+                if memory.confidence == "high":
+                    memory.confidence = "medium"
+                else:
+                    memory.confidence = "low"
 
             else:
-
                 memory.confidence = "low"
 
             memory.updated_at = datetime.utcnow()
@@ -280,17 +287,12 @@ class ConversationRepository:
         # Case 3: New memory
 
         memory = LongTermMemory(
-
             user_id=user_id,
-
             key=key,
-
             value=value,
-
             confidence="medium",
-
             source=source,
-
+            evidence_count=1,
         )
 
         self.db.add(memory)
@@ -410,7 +412,8 @@ class ConversationRepository:
             old_value = memory.value
             memory.value = value
             memory.confidence = "high"
-            memory.source = source
+            memory.source = "user_confirmed"
+            memory.evidence_count = max(memory.evidence_count, 1)
             memory.updated_at = datetime.utcnow()
             self.db.flush()
 
@@ -428,6 +431,7 @@ class ConversationRepository:
             value=value,
             confidence="high",
             source=source,
+            evidence_count=1,
         )
 
         self.db.add(memory)
@@ -440,7 +444,6 @@ class ConversationRepository:
             "confidence": "high",
         }
 
-
     def create_pending_memory_conflicts(
             self,
             user_id: str,
@@ -448,30 +451,71 @@ class ConversationRepository:
             conflicts: list[dict],
     ):
         for conflict in conflicts:
-            pending = PendingMemoryConflict(
-                user_id=user_id,
-                conversation_id=conversation_id,
-                key=conflict["key"],
-                old_value=conflict["old_value"],
-                new_value=conflict["new_value"],
-                status="pending",
+            existing = (
+                self.db.query(PendingMemoryConflict)
+                .filter(
+                    PendingMemoryConflict.user_id == user_id,
+                    PendingMemoryConflict.conversation_id == conversation_id,
+                    PendingMemoryConflict.key == conflict["key"],
+                    PendingMemoryConflict.status == "pending",
+                )
+                .first()
             )
-            self.db.add(pending)
+
+            if existing:
+                existing.old_value = conflict["old_value"]
+                existing.new_value = conflict["new_value"]
+                existing.created_at = datetime.utcnow()
+            else:
+                pending = PendingMemoryConflict(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    key=conflict["key"],
+                    old_value=conflict["old_value"],
+                    new_value=conflict["new_value"],
+                    status="pending",
+                )
+                self.db.add(pending)
 
         self.db.flush()
 
     def get_pending_memory_conflicts(
             self,
             conversation_id: str,
-    ) -> list[PendingMemoryConflict]:
+    )-> list[Type[PendingMemoryConflict]]:
+        cutoff = datetime.utcnow() - timedelta(
+            hours=settings.PENDING_CONFLICT_TTL_HOURS
+        )
+
         return (
             self.db.query(PendingMemoryConflict)
             .filter(
                 PendingMemoryConflict.conversation_id == conversation_id,
                 PendingMemoryConflict.status == "pending",
+                PendingMemoryConflict.created_at >= cutoff,
             )
             .all()
         )
+
+    def expire_old_pending_memory_conflicts(self):
+        cutoff = datetime.utcnow() - timedelta(
+            hours=settings.PENDING_CONFLICT_TTL_HOURS
+        )
+
+        conflicts = (
+            self.db.query(PendingMemoryConflict)
+            .filter(
+                PendingMemoryConflict.status == "pending",
+                PendingMemoryConflict.created_at < cutoff,
+            )
+            .all()
+        )
+
+        for conflict in conflicts:
+            conflict.status = "expired"
+            conflict.resolved_at = datetime.utcnow()
+
+        self.db.flush()
 
     def resolve_pending_memory_conflicts(
             self,
@@ -484,4 +528,5 @@ class ConversationRepository:
             conflict.status = status
             conflict.resolved_at = datetime.utcnow()
 
-        self.db.flush()
+        self.db.commit()
+

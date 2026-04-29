@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import relationship
 
 from app.db.database import Base
@@ -70,6 +70,7 @@ class LongTermMemory(Base):
     key = Column(String, nullable=False)
     value = Column(Text, nullable=False)
     confidence = Column(String, nullable=False, default="medium")
+    evidence_count = Column(Integer, nullable=False, default=1)
     source = Column(String, nullable=False, default="llm_extraction")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow)

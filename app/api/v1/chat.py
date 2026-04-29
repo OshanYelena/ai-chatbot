@@ -10,6 +10,7 @@ from app.services.llm_service import llm_service
 from app.services.memory_service import memory_service
 from app.services.long_term_memory import long_term_memory_service
 from app.services.pending_memory_service import pending_memory_service
+from app.services.confirmation_service import confirmation_service
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = setup_logger(__name__)
@@ -26,6 +27,8 @@ def chat(
 
     try:
         repo = ConversationRepository(db)
+
+        repo.expire_old_pending_memory_conflicts()
 
         conversation_id = memory_service.get_or_create_conversation(
             repo=repo,
@@ -53,13 +56,16 @@ def chat(
 
         if pending_conflicts:
 
-            decision = llm_service.detect_memory_confirmation(
+            decision = confirmation_service.quick_confirm(payload.message)
 
-                payload.message,
+            if decision is None:
+                decision = llm_service.detect_memory_confirmation(
 
-                trace_id,
+                    payload.message,
 
-            )
+                    trace_id,
+
+                )
 
             if decision == "confirm":
 
@@ -236,14 +242,9 @@ def chat(
             conversation_id=conversation_id,
         )
         if memory_conflicts:
-            conflict_text = "\n".join(
+            conflict_items = "\n".join(
                 [
-                    (
-                        f"Memory conflict detected for '{conflict['key']}': "
-                        f"existing value is '{conflict['old_value']}', "
-                        f"new user claim is '{conflict['new_value']}'. "
-                        "Do not assume the new claim is true. Ask the user to clarify."
-                    )
+                    f"- {conflict['key']}: {conflict['old_value']} → {conflict['new_value']}"
                     for conflict in memory_conflicts
                 ]
             )
@@ -252,7 +253,12 @@ def chat(
                 0,
                 {
                     "role": "system",
-                    "content": conflict_text,
+                    "content": (
+                        "Memory conflicts detected:\n"
+                        f"{conflict_items}\n\n"
+                        "Do not assume the new claims are true yet. "
+                        "Ask the user one short yes/no question asking whether all these memory updates should be applied."
+                    ),
                 },
             )
 

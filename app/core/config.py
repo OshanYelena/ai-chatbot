@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     OPENAI_TIMEOUT_SECONDS: int = 20
     OPENAI_MAX_RETRIES: int = 2
 
+    PENDING_CONFLICT_TTL_HOURS: int = 24
+
     DATABASE_URL: str
 
     class Config:
