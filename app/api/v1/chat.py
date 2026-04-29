@@ -287,6 +287,7 @@ def chat(
                 conversation_id=conversation_id,
                 summary=summary,
             )
+        db.commit()
 
         return ChatResponse(
             reply=reply,
