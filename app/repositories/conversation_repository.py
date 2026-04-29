@@ -7,7 +7,8 @@ from sqlalchemy import func, desc
 from app.core.config import settings
 from app.db.models import User, Conversation, ChatMessage, LongTermMemory
 from app.db.models import PendingMemoryConflict
-
+import json
+from app.db.models import LLMEvalResult
 
 class ConversationRepository:
     def __init__(self, db: Session):
@@ -543,4 +544,31 @@ class ConversationRepository:
             conflict.resolved_at = datetime.utcnow()
 
         self.db.commit()
+
+    def create_llm_eval_result(
+            self,
+            trace_id: str,
+            operation: str,
+            passed: bool,
+            issues: list[str],
+            metadata: dict | None = None,
+            user_id: str | None = None,
+            conversation_id: str | None = None,
+
+    ):
+
+        eval_result = LLMEvalResult(
+            trace_id=trace_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            operation=operation,
+            passed=passed,
+            issues=json.dumps(issues),
+            metadata_json=json.dumps(metadata or {}),
+
+        )
+        self.db.add(eval_result)
+        self.db.flush()
+
+        return eval_result
 
