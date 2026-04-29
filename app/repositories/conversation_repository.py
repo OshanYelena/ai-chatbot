@@ -218,18 +218,17 @@ class ConversationRepository:
             # Case 1: Same value → reinforce
 
             if memory.value == value:
+                memory.evidence_count += 1
 
-                if memory.confidence == "low":
-
-                    memory.confidence = "medium"
-
-                elif memory.confidence == "medium":
-
+                if memory.evidence_count >= 3:
                     memory.confidence = "high"
+                elif memory.evidence_count == 2:
+                    memory.confidence = "medium"
+                else:
+                    memory.confidence = "low"
 
                 memory.updated_at = datetime.utcnow()
-
-                self.db.commit()
+                self.db.flush()
 
                 return {
 
@@ -282,17 +281,12 @@ class ConversationRepository:
         # Case 3: New memory
 
         memory = LongTermMemory(
-
             user_id=user_id,
-
             key=key,
-
             value=value,
-
             confidence="medium",
-
             source=source,
-
+            evidence_count=1,
         )
 
         self.db.add(memory)
@@ -413,6 +407,7 @@ class ConversationRepository:
             memory.value = value
             memory.confidence = "high"
             memory.source = source
+            memory.evidence_count = 1
             memory.updated_at = datetime.utcnow()
             self.db.commit()
 
@@ -430,6 +425,7 @@ class ConversationRepository:
             value=value,
             confidence="high",
             source=source,
+            evidence_count=1,
         )
 
         self.db.add(memory)
