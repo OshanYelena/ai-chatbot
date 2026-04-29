@@ -386,3 +386,55 @@ class ConversationRepository:
             )
 
         return conversations
+
+    def force_update_long_term_memory(
+            self,
+            user_id: str,
+            key: str,
+            value: str,
+            source: str = "user_confirmed",
+    ) -> dict:
+        self.get_or_create_user(user_id)
+
+        memory = (
+            self.db.query(LongTermMemory)
+            .filter(
+                LongTermMemory.user_id == user_id,
+                LongTermMemory.key == key,
+            )
+            .first()
+        )
+
+        if memory:
+            old_value = memory.value
+            memory.value = value
+            memory.confidence = "high"
+            memory.source = source
+            memory.updated_at = datetime.utcnow()
+            self.db.commit()
+
+            return {
+                "status": "updated",
+                "key": key,
+                "old_value": old_value,
+                "new_value": value,
+                "confidence": "high",
+            }
+
+        memory = LongTermMemory(
+            user_id=user_id,
+            key=key,
+            value=value,
+            confidence="high",
+            source=source,
+        )
+
+        self.db.add(memory)
+        self.db.commit()
+
+        return {
+            "status": "created",
+            "key": key,
+            "value": value,
+            "confidence": "high",
+        }
