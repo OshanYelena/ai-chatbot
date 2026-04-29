@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-
+import asyncio
 from app.core.logger import setup_logger
 from app.core.rate_limiter import limiter
 from app.db.database import get_db
@@ -430,7 +430,7 @@ def chat_stream(
                 },
             )
 
-        def event_generator():
+        async def event_generator():
             full_reply = ""
             stream_completed = False
 
@@ -439,8 +439,13 @@ def chat_stream(
                         context_messages,
                         trace_id,
                 ):
+                    if await request.is_disconnected():
+                        raise Exception("Client disconnected during stream")
+
                     full_reply += chunk
                     yield f"event: token\ndata: {chunk}\n\n"
+
+                    await asyncio.sleep(0)
 
                 stream_completed = True
 
