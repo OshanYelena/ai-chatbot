@@ -4,7 +4,7 @@ from typing import List
 
 from openai import OpenAI
 from opentelemetry import trace
-
+from typing import Generator
 from app.core.config import settings
 from app.core.logger import setup_logger
 from app.core.memory_config import STRUCTURED_MEMORY_KEYS, DYNAMIC_PREFIX
@@ -21,6 +21,69 @@ class LLMService:
             max_retries=settings.OPENAI_MAX_RETRIES,
         )
         self.model = settings.OPENAI_MODEL
+
+    def stream_reply(
+            self,
+            messages: List[dict],
+            trace_id: str,
+    ) -> Generator[str, None, str]:
+        operation = "stream_reply"
+        start_time = time.perf_counter()
+        full_reply = ""
+
+        with tracer.start_as_current_span("llm.stream_reply") as span:
+            span.set_attribute("llm.operation", operation)
+            span.set_attribute("llm.model", self.model)
+            span.set_attribute("llm.input_messages_count", len(messages))
+
+            try:
+                self._log_started(trace_id, operation, len(messages))
+
+                stream = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a helpful, friendly AI chatbot.",
+                        },
+                        *messages,
+                    ],
+                    temperature=0.7,
+                    max_tokens=500,
+                    stream=True,
+                )
+
+                for chunk in stream:
+                    delta = chunk.choices[0].delta.content
+
+                    if delta:
+                        full_reply += delta
+                        yield delta
+
+                span.set_attribute("llm.status", "success")
+                span.set_attribute("llm.response_length", len(full_reply))
+
+                self._log_success(
+                    trace_id=trace_id,
+                    operation=operation,
+                    start_time=start_time,
+                    usage=None,
+                    extra={
+                        "response_length": len(full_reply),
+                    },
+                )
+
+                return full_reply
+
+            except Exception as e:
+                span.record_exception(e)
+                span.set_attribute("llm.status", "failed")
+                span.set_attribute("llm.error_message", str(e))
+
+                self._log_failure(trace_id, operation, start_time, e)
+                raise
+
+
 
     def _log_success(self, trace_id: str, operation: str, start_time: float, usage=None, extra: dict | None = None):
         latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
