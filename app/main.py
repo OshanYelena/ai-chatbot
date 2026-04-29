@@ -42,3 +42,13 @@ def health_check(db: Session = Depends(get_db)):
         "status": "healthy",
         "database": "connected",
     }
+
+
+@app.get("/ready")
+def readiness_check(db: Session = Depends(get_db)):
+    check_db_connection(db)
+    return {
+        "status": "ready",
+        "database": "connected"
+
+    }
