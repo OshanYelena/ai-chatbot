@@ -4,6 +4,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from app.db.models import User, Conversation, ChatMessage, LongTermMemory
+from app.db.models import PendingMemoryConflict
 
 
 class ConversationRepository:
@@ -438,3 +439,49 @@ class ConversationRepository:
             "value": value,
             "confidence": "high",
         }
+
+
+    def create_pending_memory_conflicts(
+            self,
+            user_id: str,
+            conversation_id: str,
+            conflicts: list[dict],
+    ):
+        for conflict in conflicts:
+            pending = PendingMemoryConflict(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                key=conflict["key"],
+                old_value=conflict["old_value"],
+                new_value=conflict["new_value"],
+                status="pending",
+            )
+            self.db.add(pending)
+
+        self.db.commit()
+
+    def get_pending_memory_conflicts(
+            self,
+            conversation_id: str,
+    ) -> list[PendingMemoryConflict]:
+        return (
+            self.db.query(PendingMemoryConflict)
+            .filter(
+                PendingMemoryConflict.conversation_id == conversation_id,
+                PendingMemoryConflict.status == "pending",
+            )
+            .all()
+        )
+
+    def resolve_pending_memory_conflicts(
+            self,
+            conversation_id: str,
+            status: str,
+    ):
+        conflicts = self.get_pending_memory_conflicts(conversation_id)
+
+        for conflict in conflicts:
+            conflict.status = status
+            conflict.resolved_at = datetime.utcnow()
+
+        self.db.commit()
