@@ -440,7 +440,6 @@ class ConversationRepository:
             "confidence": "high",
         }
 
-
     def create_pending_memory_conflicts(
             self,
             user_id: str,
@@ -448,17 +447,33 @@ class ConversationRepository:
             conflicts: list[dict],
     ):
         for conflict in conflicts:
-            pending = PendingMemoryConflict(
-                user_id=user_id,
-                conversation_id=conversation_id,
-                key=conflict["key"],
-                old_value=conflict["old_value"],
-                new_value=conflict["new_value"],
-                status="pending",
+            existing = (
+                self.db.query(PendingMemoryConflict)
+                .filter(
+                    PendingMemoryConflict.user_id == user_id,
+                    PendingMemoryConflict.conversation_id == conversation_id,
+                    PendingMemoryConflict.key == conflict["key"],
+                    PendingMemoryConflict.status == "pending",
+                )
+                .first()
             )
-            self.db.add(pending)
 
-        self.db.commit()
+            if existing:
+                existing.old_value = conflict["old_value"]
+                existing.new_value = conflict["new_value"]
+                existing.created_at = datetime.utcnow()
+            else:
+                pending = PendingMemoryConflict(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    key=conflict["key"],
+                    old_value=conflict["old_value"],
+                    new_value=conflict["new_value"],
+                    status="pending",
+                )
+                self.db.add(pending)
+
+        self.db.flush()
 
     def get_pending_memory_conflicts(
             self,
@@ -485,3 +500,4 @@ class ConversationRepository:
             conflict.resolved_at = datetime.utcnow()
 
         self.db.commit()
+
