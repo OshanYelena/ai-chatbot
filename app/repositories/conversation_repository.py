@@ -28,7 +28,7 @@ class ConversationRepository:
 
         user = User(id=user_id)
         self.db.add(user)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(user)
         return user
 
@@ -53,7 +53,7 @@ class ConversationRepository:
 
         conversation = Conversation(user_id=user_id)
         self.db.add(conversation)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(conversation)
         return conversation
 
@@ -86,7 +86,7 @@ class ConversationRepository:
         )
 
         self.db.add(message)
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(message)
         return message
 
@@ -142,7 +142,7 @@ class ConversationRepository:
             return
 
         conversation.summary = summary
-        self.db.commit()
+        self.db.flush()
         self.db.refresh(conversation)
 
     def compress_conversation(self, conversation_id: str, keep_last: int):
@@ -152,7 +152,7 @@ class ConversationRepository:
             ChatMessage.conversation_id == conversation_id
         ).delete()
 
-        self.db.commit()
+        self.db.flush()
 
         for message in recent_messages:
             new_message = ChatMessage(
@@ -162,7 +162,7 @@ class ConversationRepository:
             )
             self.db.add(new_message)
 
-        self.db.commit()
+        self.db.flush()
 
     # ---------- Long-Term Memory ----------
 
@@ -227,7 +227,7 @@ class ConversationRepository:
 
                 memory.updated_at = datetime.utcnow()
 
-                self.db.commit()
+                self.db.flush()
 
                 return {
 
@@ -259,7 +259,7 @@ class ConversationRepository:
 
             memory.updated_at = datetime.utcnow()
 
-            self.db.commit()
+            self.db.flush()
 
             return {
 
@@ -295,7 +295,7 @@ class ConversationRepository:
 
         self.db.add(memory)
 
-        self.db.commit()
+        self.db.flush()
 
         return {
 
@@ -412,7 +412,7 @@ class ConversationRepository:
             memory.confidence = "high"
             memory.source = source
             memory.updated_at = datetime.utcnow()
-            self.db.commit()
+            self.db.flush()
 
             return {
                 "status": "updated",
@@ -431,7 +431,7 @@ class ConversationRepository:
         )
 
         self.db.add(memory)
-        self.db.commit()
+        self.db.flush()
 
         return {
             "status": "created",
@@ -458,7 +458,7 @@ class ConversationRepository:
             )
             self.db.add(pending)
 
-        self.db.commit()
+        self.db.flush()
 
     def get_pending_memory_conflicts(
             self,
@@ -484,4 +484,4 @@ class ConversationRepository:
             conflict.status = status
             conflict.resolved_at = datetime.utcnow()
 
-        self.db.commit()
+        self.db.flush()
