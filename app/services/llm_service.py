@@ -1,4 +1,5 @@
 import json
+import time
 from typing import List
 
 from openai import OpenAI
@@ -6,7 +7,6 @@ from openai import OpenAI
 from app.core.config import settings
 from app.core.logger import setup_logger
 from app.core.memory_config import STRUCTURED_MEMORY_KEYS, DYNAMIC_PREFIX
-
 
 logger = setup_logger(__name__)
 
@@ -17,20 +17,79 @@ class LLMService:
             api_key=settings.OPENAI_API_KEY,
             timeout=settings.OPENAI_TIMEOUT_SECONDS,
             max_retries=settings.OPENAI_MAX_RETRIES,
-
         )
         self.model = settings.OPENAI_MODEL
 
+    def _log_success(
+        self,
+        trace_id: str,
+        operation: str,
+        start_time: float,
+        usage=None,
+        extra: dict | None = None,
+    ):
+        latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+        log_extra = {
+            "trace_id": trace_id,
+            "event": "llm_request_success",
+            "operation": operation,
+            "model": self.model,
+            "latency_ms": latency_ms,
+            "prompt_tokens": usage.prompt_tokens if usage else None,
+            "completion_tokens": usage.completion_tokens if usage else None,
+            "total_tokens": usage.total_tokens if usage else None,
+        }
+
+        if extra:
+            log_extra.update(extra)
+
+        logger.info("llm_request_success", extra=log_extra)
+
+    def _log_failure(
+        self,
+        trace_id: str,
+        operation: str,
+        start_time: float,
+        error: Exception,
+    ):
+        latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
+        logger.exception(
+            "llm_request_failed",
+            extra={
+                "trace_id": trace_id,
+                "event": "llm_request_failed",
+                "operation": operation,
+                "model": self.model,
+                "latency_ms": latency_ms,
+                "error_message": str(error),
+            },
+        )
+
+    def _log_started(
+        self,
+        trace_id: str,
+        operation: str,
+        input_messages_count: int,
+    ):
+        logger.info(
+            "llm_request_started",
+            extra={
+                "trace_id": trace_id,
+                "event": "llm_request_started",
+                "operation": operation,
+                "model": self.model,
+                "input_messages_count": input_messages_count,
+            },
+        )
+
     def generate_reply(self, messages: List[dict], trace_id: str) -> str:
+        operation = "generate_reply"
+        start_time = time.perf_counter()
+
         try:
-            logger.info(
-                "llm_request_started",
-                extra={
-                    "trace_id": trace_id,
-                    "event": "llm_request_started",
-                    "model": self.model,
-                },
-            )
+            self._log_started(trace_id, operation, len(messages))
 
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -45,37 +104,25 @@ class LLMService:
                 max_tokens=500,
             )
 
-            logger.info(
-                "llm_request_success",
-                extra={
-                    "trace_id": trace_id,
-                    "event": "llm_request_success",
-                    "model": self.model,
-                },
+            self._log_success(
+                trace_id=trace_id,
+                operation=operation,
+                start_time=start_time,
+                usage=response.usage,
             )
 
             return response.choices[0].message.content or ""
 
-        except Exception:
-            logger.exception(
-                "llm_request_failed",
-                extra={
-                    "trace_id": trace_id,
-                    "event": "llm_request_failed",
-                    "model": self.model,
-                },
-            )
+        except Exception as e:
+            self._log_failure(trace_id, operation, start_time, e)
             raise
 
     def summarize_messages(self, messages: List[dict], trace_id: str) -> str:
+        operation = "summarize_messages"
+        start_time = time.perf_counter()
+
         try:
-            logger.info(
-                "llm_summary_started",
-                extra={
-                    "trace_id": trace_id,
-                    "event": "llm_summary_started",
-                },
-            )
+            self._log_started(trace_id, operation, len(messages))
 
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -97,35 +144,25 @@ class LLMService:
                 max_tokens=300,
             )
 
-            logger.info(
-                "llm_summary_success",
-                extra={
-                    "trace_id": trace_id,
-                    "event": "llm_summary_success",
-                },
+            self._log_success(
+                trace_id=trace_id,
+                operation=operation,
+                start_time=start_time,
+                usage=response.usage,
             )
 
             return response.choices[0].message.content or ""
 
-        except Exception:
-            logger.exception(
-                "llm_summary_failed",
-                extra={
-                    "trace_id": trace_id,
-                    "event": "llm_summary_failed",
-                },
-            )
+        except Exception as e:
+            self._log_failure(trace_id, operation, start_time, e)
             raise
 
     def extract_user_facts(self, message: str, trace_id: str) -> dict:
+        operation = "extract_user_facts"
+        start_time = time.perf_counter()
+
         try:
-            logger.info(
-                "llm_extract_started",
-                extra={
-                    "trace_id": trace_id,
-                    "event": "llm_extract_started",
-                },
-            )
+            self._log_started(trace_id, operation, 1)
 
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -151,63 +188,43 @@ class LLMService:
             raw_facts = json.loads(content)
 
             structured = {}
-
             dynamic = {}
 
             for key, value in raw_facts.items():
+                normalized_key = key.lower().strip()
 
-                key = key.lower().strip()
-
-                if key in STRUCTURED_MEMORY_KEYS:
-
-                    structured[key] = value
-
+                if normalized_key in STRUCTURED_MEMORY_KEYS:
+                    structured[normalized_key] = value
                 else:
-
-                    dynamic[f"{DYNAMIC_PREFIX}{key}"] = value
+                    dynamic[f"{DYNAMIC_PREFIX}{normalized_key}"] = value
 
             final_memory = {**structured, **dynamic}
 
-            logger.info(
-
-                "llm_extract_processed",
-
+            self._log_success(
+                trace_id=trace_id,
+                operation=operation,
+                start_time=start_time,
+                usage=response.usage,
                 extra={
-
-                    "trace_id": trace_id,
-
-                    "event": "llm_extract_processed",
-
                     "structured_keys": list(structured.keys()),
-
                     "dynamic_keys": list(dynamic.keys()),
-
+                    "extracted_keys": list(final_memory.keys()),
                 },
-
             )
 
             return final_memory
 
-        except Exception:
-
-            logger.exception(
-
-                "llm_extract_failed",
-
-                extra={
-
-                    "trace_id": trace_id,
-
-                    "event": "llm_extract_failed",
-
-                },
-
-            )
-
+        except Exception as e:
+            self._log_failure(trace_id, operation, start_time, e)
             return {}
 
     def detect_memory_confirmation(self, message: str, trace_id: str) -> str:
+        operation = "detect_memory_confirmation"
+        start_time = time.perf_counter()
+
         try:
+            self._log_started(trace_id, operation, 1)
+
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -230,18 +247,22 @@ class LLMService:
             result = (response.choices[0].message.content or "unclear").strip().lower()
 
             if result not in {"confirm", "reject", "unclear"}:
-                return "unclear"
+                result = "unclear"
+
+            self._log_success(
+                trace_id=trace_id,
+                operation=operation,
+                start_time=start_time,
+                usage=response.usage,
+                extra={
+                    "classification": result,
+                },
+            )
 
             return result
 
-        except Exception:
-            logger.exception(
-                "memory_confirmation_detection_failed",
-                extra={
-                    "trace_id": trace_id,
-                    "event": "memory_confirmation_detection_failed",
-                },
-            )
+        except Exception as e:
+            self._log_failure(trace_id, operation, start_time, e)
             return "unclear"
 
 
