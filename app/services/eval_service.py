@@ -68,6 +68,9 @@ class EvalService:
                 result["passed"] = False
                 result["issues"].append(f"empty_value:{key}")
 
+            if isinstance(value, (dict, list)):
+                result["issues"].append(f"nested_value:{key}")
+
         logger.info(
             "memory_eval_result",
             extra={
