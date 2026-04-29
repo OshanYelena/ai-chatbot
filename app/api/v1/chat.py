@@ -43,7 +43,13 @@ def chat(
             },
         )
 
-        pending_conflicts = pending_memory_service.get_pending_conflicts(conversation_id)
+        pending_conflicts = pending_memory_service.get_pending_conflicts(
+
+            repo=repo,
+
+            conversation_id=conversation_id,
+
+        )
 
         if pending_conflicts:
 
@@ -74,7 +80,15 @@ def chat(
 
                     updates.append(result)
 
-                pending_memory_service.clear_pending_conflicts(conversation_id)
+                pending_memory_service.clear_pending_conflicts(
+
+                    repo=repo,
+
+                    conversation_id=conversation_id,
+
+                    status="confirmed",
+
+                )
 
                 reply = "Got it — I updated that memory."
 
@@ -113,7 +127,15 @@ def chat(
                 )
 
             if decision == "reject":
-                pending_memory_service.clear_pending_conflicts(conversation_id)
+                pending_memory_service.clear_pending_conflicts(
+
+                    repo=repo,
+
+                    conversation_id=conversation_id,
+
+                    status="rejected",
+
+                )
 
                 reply = "Got it — I kept the existing memory unchanged."
 
@@ -198,9 +220,13 @@ def chat(
         if memory_conflicts:
             pending_memory_service.set_pending_conflicts(
 
-                conversation_id,
+                repo=repo,
 
-                memory_conflicts,
+                user_id=payload.user_id,
+
+                conversation_id=conversation_id,
+
+                conflicts=memory_conflicts,
 
             )
 
