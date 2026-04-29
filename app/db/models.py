@@ -78,3 +78,20 @@ class LongTermMemory(Base):
         "User",
         back_populates="memories",
     )
+
+
+class PendingMemoryConflict(Base):
+    __tablename__ = "pending_memory_conflicts"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    conversation_id = Column(String, ForeignKey("conversations.id"), nullable=False)
+
+    key = Column(String, nullable=False)
+    old_value = Column(Text, nullable=False)
+    new_value = Column(Text, nullable=False)
+
+    status = Column(String, nullable=False, default="pending")
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
