@@ -10,6 +10,7 @@ from app.services.llm_service import llm_service
 from app.services.memory_service import memory_service
 from app.services.long_term_memory import long_term_memory_service
 from app.services.pending_memory_service import pending_memory_service
+from app.services.confirmation_service import confirmation_service
 
 router = APIRouter(prefix="/chat", tags=["Chat"])
 logger = setup_logger(__name__)
@@ -53,13 +54,16 @@ def chat(
 
         if pending_conflicts:
 
-            decision = llm_service.detect_memory_confirmation(
+            decision = confirmation_service.quick_confirm(payload.message)
 
-                payload.message,
+            if decision is None:
+                decision = llm_service.detect_memory_confirmation(
 
-                trace_id,
+                    payload.message,
 
-            )
+                    trace_id,
+
+                )
 
             if decision == "confirm":
 
