@@ -208,6 +208,12 @@ class ConversationRepository:
 
         if memory:
 
+            old_value = memory.value
+
+            old_confidence = memory.confidence
+
+            # Case 1: Same value → reinforce
+
             if memory.value == value:
 
                 if memory.confidence == "low":
@@ -230,11 +236,25 @@ class ConversationRepository:
 
                     "value": value,
 
+                    "old_confidence": old_confidence,
+
+                    "new_confidence": memory.confidence,
+
                 }
 
-            old_value = memory.value
+            # Case 2: Conflict → degrade carefully
 
-            memory.confidence = "low"
+            if memory.confidence == "high":
+
+                memory.confidence = "medium"
+
+            elif memory.confidence == "medium":
+
+                memory.confidence = "low"
+
+            else:
+
+                memory.confidence = "low"
 
             memory.updated_at = datetime.utcnow()
 
@@ -250,7 +270,13 @@ class ConversationRepository:
 
                 "new_value": value,
 
+                "old_confidence": old_confidence,
+
+                "new_confidence": memory.confidence,
+
             }
+
+        # Case 3: New memory
 
         memory = LongTermMemory(
 
@@ -277,6 +303,8 @@ class ConversationRepository:
             "key": key,
 
             "value": value,
+
+            "new_confidence": "medium",
 
         }
 
