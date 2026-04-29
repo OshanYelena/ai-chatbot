@@ -38,5 +38,18 @@ class LongTermMemoryService:
 
         return f"User known facts:\n{formatted}"
 
+    def force_update_memory(
+            self,
+            repo: ConversationRepository,
+            user_id: str,
+            key: str,
+            value: str,
+    ) -> dict:
+        return repo.force_update_long_term_memory(
+            user_id=user_id,
+            key=key,
+            value=value,
+        )
+
 
 long_term_memory_service = LongTermMemoryService()
