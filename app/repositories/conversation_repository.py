@@ -1,8 +1,12 @@
-from typing import List, Optional
+from datetime import datetime, timedelta
+from typing import List, Optional, Type
 
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
+
+from app.core.config import settings
 from app.db.models import User, Conversation, ChatMessage, LongTermMemory
+from app.db.models import PendingMemoryConflict
 
 
 class ConversationRepository:
@@ -174,33 +178,138 @@ class ConversationRepository:
         return {memory.key: memory.value for memory in memories}
 
     def upsert_long_term_memory(
-        self,
-        user_id: str,
-        key: str,
-        value: str,
-    ):
+
+            self,
+
+            user_id: str,
+
+            key: str,
+
+            value: str,
+
+            source: str = "llm_extraction",
+
+    ) -> dict:
+
         self.get_or_create_user(user_id)
 
         memory = (
+
             self.db.query(LongTermMemory)
+
             .filter(
+
                 LongTermMemory.user_id == user_id,
+
                 LongTermMemory.key == key,
+
             )
+
             .first()
+
         )
 
         if memory:
-            memory.value = str(value)
-        else:
-            memory = LongTermMemory(
-                user_id=user_id,
-                key=key,
-                value=str(value),
-            )
-            self.db.add(memory)
+
+            old_value = memory.value
+
+            old_confidence = memory.confidence
+
+            # Case 1: Same value → reinforce
+
+            if memory.value == value:
+                memory.evidence_count += 1
+
+                if memory.evidence_count >= 3:
+                    memory.confidence = "high"
+                elif memory.evidence_count == 2:
+                    memory.confidence = "medium"
+                else:
+                    memory.confidence = "low"
+
+                memory.updated_at = datetime.utcnow()
+                self.db.flush()
+
+                return {
+
+                    "status": "reinforced",
+
+                    "key": key,
+
+                    "value": value,
+
+                    "old_confidence": old_confidence,
+
+                    "new_confidence": memory.confidence,
+
+                }
+
+            # Case 2: Conflict → degrade carefully
+
+            # Case 2: Conflict → degrade based on source trust
+            if memory.source == "user_confirmed":
+                if memory.confidence == "high":
+                    memory.confidence = "medium"
+                elif memory.confidence == "medium":
+                    memory.confidence = "low"
+                else:
+                    memory.confidence = "low"
+
+            elif memory.source == "llm_extraction":
+                if memory.confidence == "high":
+                    memory.confidence = "medium"
+                else:
+                    memory.confidence = "low"
+
+            else:
+                memory.confidence = "low"
+
+            memory.updated_at = datetime.utcnow()
+
+            self.db.commit()
+
+            return {
+
+                "status": "conflict",
+
+                "key": key,
+
+                "old_value": old_value,
+
+                "new_value": value,
+
+                "old_confidence": old_confidence,
+
+                "new_confidence": memory.confidence,
+
+            }
+
+        # Case 3: New memory
+
+        memory = LongTermMemory(
+            user_id=user_id,
+            key=key,
+            value=value,
+            confidence="medium",
+            source=source,
+            evidence_count=1,
+        )
+
+        self.db.add(memory)
 
         self.db.commit()
+
+        return {
+
+            "status": "created",
+
+            "key": key,
+
+            "value": value,
+
+            "new_confidence": "medium",
+
+        }
 
     def list_conversations_by_user(self, user_id: str):
 
@@ -280,3 +389,144 @@ class ConversationRepository:
             )
 
         return conversations
+
+    def force_update_long_term_memory(
+            self,
+            user_id: str,
+            key: str,
+            value: str,
+            source: str = "user_confirmed",
+    ) -> dict:
+        self.get_or_create_user(user_id)
+
+        memory = (
+            self.db.query(LongTermMemory)
+            .filter(
+                LongTermMemory.user_id == user_id,
+                LongTermMemory.key == key,
+            )
+            .first()
+        )
+
+        if memory:
+            old_value = memory.value
+            memory.value = value
+            memory.confidence = "high"
+            memory.source = "user_confirmed"
+            memory.evidence_count = max(memory.evidence_count, 1)
+            memory.updated_at = datetime.utcnow()
+            self.db.commit()
+
+            return {
+                "status": "updated",
+                "key": key,
+                "old_value": old_value,
+                "new_value": value,
+                "confidence": "high",
+            }
+
+        memory = LongTermMemory(
+            user_id=user_id,
+            key=key,
+            value=value,
+            confidence="high",
+            source=source,
+            evidence_count=1,
+        )
+
+        self.db.add(memory)
+        self.db.commit()
+
+        return {
+            "status": "created",
+            "key": key,
+            "value": value,
+            "confidence": "high",
+        }
+
+    def create_pending_memory_conflicts(
+            self,
+            user_id: str,
+            conversation_id: str,
+            conflicts: list[dict],
+    ):
+        for conflict in conflicts:
+            existing = (
+                self.db.query(PendingMemoryConflict)
+                .filter(
+                    PendingMemoryConflict.user_id == user_id,
+                    PendingMemoryConflict.conversation_id == conversation_id,
+                    PendingMemoryConflict.key == conflict["key"],
+                    PendingMemoryConflict.status == "pending",
+                )
+                .first()
+            )
+
+            if existing:
+                existing.old_value = conflict["old_value"]
+                existing.new_value = conflict["new_value"]
+                existing.created_at = datetime.utcnow()
+            else:
+                pending = PendingMemoryConflict(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    key=conflict["key"],
+                    old_value=conflict["old_value"],
+                    new_value=conflict["new_value"],
+                    status="pending",
+                )
+                self.db.add(pending)
+
+        self.db.flush()
+
+    def get_pending_memory_conflicts(
+            self,
+            conversation_id: str,
+    )-> list[Type[PendingMemoryConflict]]:
+        cutoff = datetime.utcnow() - timedelta(
+            hours=settings.PENDING_CONFLICT_TTL_HOURS
+        )
+
+        return (
+            self.db.query(PendingMemoryConflict)
+            .filter(
+                PendingMemoryConflict.conversation_id == conversation_id,
+                PendingMemoryConflict.status == "pending",
+                PendingMemoryConflict.created_at >= cutoff,
+            )
+            .all()
+        )
+
+    def expire_old_pending_memory_conflicts(self):
+        cutoff = datetime.utcnow() - timedelta(
+            hours=settings.PENDING_CONFLICT_TTL_HOURS
+        )
+
+        conflicts = (
+            self.db.query(PendingMemoryConflict)
+            .filter(
+                PendingMemoryConflict.status == "pending",
+                PendingMemoryConflict.created_at < cutoff,
+            )
+            .all()
+        )
+
+        for conflict in conflicts:
+            conflict.status = "expired"
+            conflict.resolved_at = datetime.utcnow()
+
+        self.db.flush()
+
+    def resolve_pending_memory_conflicts(
+            self,
+            conversation_id: str,
+            status: str,
+    ):
+        conflicts = self.get_pending_memory_conflicts(conversation_id)
+
+        for conflict in conflicts:
+            conflict.status = status
+            conflict.resolved_at = datetime.utcnow()
+
+        self.db.commit()
+

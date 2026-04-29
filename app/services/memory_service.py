@@ -1,6 +1,7 @@
 from typing import List
 
 from app.core.config import settings
+from app.db.models import LongTermMemory
 from app.repositories.conversation_repository import ConversationRepository
 
 
@@ -71,20 +72,109 @@ class MemoryService:
 
         long_term_memory = repo.get_long_term_memory(user_id)
 
-        if long_term_memory:
-            memory_text = "\n".join(
-                [f"{key}: {value}" for key, value in long_term_memory.items()]
+        high_conf = []
+
+        medium_conf = []
+
+        low_conf = []
+
+        for key, value in long_term_memory.items():
+
+            memory = (
+
+                repo.db.query(LongTermMemory)
+
+                .filter(
+
+                    LongTermMemory.user_id == user_id,
+
+                    LongTermMemory.key == key,
+
+                )
+
+                .first()
+
             )
 
-            messages.append(
-                {
-                    "role": "system",
-                    "content": f"User known facts:\n{memory_text}",
-                }
+            if not memory:
+                continue
+
+            if memory.confidence == "high":
+
+                high_conf.append(f"{key}: {value}")
+
+            elif memory.confidence == "medium":
+
+                medium_conf.append(f"{key}: {value}")
+
+            else:
+
+                low_conf.append(f"{key}: {value}")
+
+        if high_conf:
+            messages.append({
+
+                "role": "system",
+
+                "content": "User confirmed facts:\n" + "\n".join(high_conf),
+
+            })
+
+        if medium_conf:
+            messages.append({
+
+                "role": "system",
+
+                "content": "User likely facts:\n" + "\n".join(medium_conf),
+
+            })
+
+        if low_conf:
+            messages.append({
+
+                "role": "system",
+
+                "content": (
+
+                        "Uncertain user information (may be outdated or incorrect):\n"
+
+                        + "\n".join(low_conf)
+
+                ),
+
+            })
+
+
+
+        structured_memory = {
+            k: v for k, v in long_term_memory.items() if not k.startswith("dynamic_")
+        }
+
+        dynamic_memory = {
+            k: v for k, v in long_term_memory.items() if k.startswith("dynamic_")
+        }
+
+        if structured_memory:
+            structured_text = "\n".join(
+                [f"{k}: {v}" for k, v in structured_memory.items()]
             )
+
+            messages.append({
+                "role": "system",
+                "content": f"User core facts:\n{structured_text}",
+            })
+
+        if dynamic_memory:
+            dynamic_text = "\n".join(
+                [f"{k}: {v}" for k, v in dynamic_memory.items()]
+            )
+
+            messages.append({
+                "role": "system",
+                "content": f"Additional user context:\n{dynamic_text}",
+            })
 
         summary = repo.get_summary(conversation_id)
-
         if summary:
             messages.append(
                 {

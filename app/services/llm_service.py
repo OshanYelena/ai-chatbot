@@ -5,6 +5,8 @@ from openai import OpenAI
 
 from app.core.config import settings
 from app.core.logger import setup_logger
+from app.core.memory_config import STRUCTURED_MEMORY_KEYS, DYNAMIC_PREFIX
+
 
 logger = setup_logger(__name__)
 
@@ -146,28 +148,101 @@ class LLMService:
             )
 
             content = response.choices[0].message.content or "{}"
-            result = json.loads(content)
+            raw_facts = json.loads(content)
+
+            structured = {}
+
+            dynamic = {}
+
+            for key, value in raw_facts.items():
+
+                key = key.lower().strip()
+
+                if key in STRUCTURED_MEMORY_KEYS:
+
+                    structured[key] = value
+
+                else:
+
+                    dynamic[f"{DYNAMIC_PREFIX}{key}"] = value
+
+            final_memory = {**structured, **dynamic}
 
             logger.info(
-                "llm_extract_success",
+
+                "llm_extract_processed",
+
                 extra={
+
                     "trace_id": trace_id,
-                    "event": "llm_extract_success",
-                    "extracted_keys": list(result.keys()),
+
+                    "event": "llm_extract_processed",
+
+                    "structured_keys": list(structured.keys()),
+
+                    "dynamic_keys": list(dynamic.keys()),
+
                 },
+
             )
+
+            return final_memory
+
+        except Exception:
+
+            logger.exception(
+
+                "llm_extract_failed",
+
+                extra={
+
+                    "trace_id": trace_id,
+
+                    "event": "llm_extract_failed",
+
+                },
+
+            )
+
+            return {}
+
+    def detect_memory_confirmation(self, message: str, trace_id: str) -> str:
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Classify whether the user is confirming a memory update. "
+                            "Return only one word: confirm, reject, or unclear."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": message,
+                    },
+                ],
+                temperature=0,
+                max_tokens=10,
+            )
+
+            result = (response.choices[0].message.content or "unclear").strip().lower()
+
+            if result not in {"confirm", "reject", "unclear"}:
+                return "unclear"
 
             return result
 
         except Exception:
             logger.exception(
-                "llm_extract_failed",
+                "memory_confirmation_detection_failed",
                 extra={
                     "trace_id": trace_id,
-                    "event": "llm_extract_failed",
+                    "event": "memory_confirmation_detection_failed",
                 },
             )
-            return {}
+            return "unclear"
 
 
 llm_service = LLMService()
