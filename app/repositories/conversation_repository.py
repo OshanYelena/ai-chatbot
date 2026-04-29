@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from typing import List, Optional, Type
-
+import json
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
@@ -49,6 +49,16 @@ class ConversationRepository:
             )
             .first()
         )
+
+    def _normalize_memory_value(self, value) -> str:
+
+        if isinstance(value, str):
+            return value
+
+        if isinstance(value, (dict, list)):
+            return json.dumps(value)
+
+        return str(value)
 
     def create_conversation(self, user_id: str) -> Conversation:
         self.get_or_create_user(user_id)
@@ -190,6 +200,8 @@ class ConversationRepository:
             source: str = "llm_extraction",
 
     ) -> dict:
+
+        value = self._normalize_memory_value(value)
 
         self.get_or_create_user(user_id)
 
@@ -397,6 +409,8 @@ class ConversationRepository:
             value: str,
             source: str = "user_confirmed",
     ) -> dict:
+        value = self._normalize_memory_value(value)
+
         self.get_or_create_user(user_id)
 
         memory = (
