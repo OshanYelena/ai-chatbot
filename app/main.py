@@ -10,6 +10,7 @@ from app.core.rate_limiter import limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi import _rate_limit_exceeded_handler
+from app.core.telemetry import setup_telemetry
 
 from app.api.v1.conversations import router as conversations_router
 
@@ -18,6 +19,8 @@ app = FastAPI(
     version=settings.APP_VERSION,
     description="A production-style hello world chatbot backend"
 )
+
+setup_telemetry(app)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
