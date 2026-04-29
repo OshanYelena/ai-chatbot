@@ -1,6 +1,7 @@
 from typing import List
 
 from app.core.config import settings
+from app.db.models import LongTermMemory
 from app.repositories.conversation_repository import ConversationRepository
 
 
@@ -70,6 +71,80 @@ class MemoryService:
         messages: List[dict] = []
 
         long_term_memory = repo.get_long_term_memory(user_id)
+
+        high_conf = []
+
+        medium_conf = []
+
+        low_conf = []
+
+        for key, value in long_term_memory.items():
+
+            memory = (
+
+                repo.db.query(LongTermMemory)
+
+                .filter(
+
+                    LongTermMemory.user_id == user_id,
+
+                    LongTermMemory.key == key,
+
+                )
+
+                .first()
+
+            )
+
+            if not memory:
+                continue
+
+            if memory.confidence == "high":
+
+                high_conf.append(f"{key}: {value}")
+
+            elif memory.confidence == "medium":
+
+                medium_conf.append(f"{key}: {value}")
+
+            else:
+
+                low_conf.append(f"{key}: {value}")
+
+        if high_conf:
+            messages.append({
+
+                "role": "system",
+
+                "content": "User confirmed facts:\n" + "\n".join(high_conf),
+
+            })
+
+        if medium_conf:
+            messages.append({
+
+                "role": "system",
+
+                "content": "User likely facts:\n" + "\n".join(medium_conf),
+
+            })
+
+        if low_conf:
+            messages.append({
+
+                "role": "system",
+
+                "content": (
+
+                        "Uncertain user information (may be outdated or incorrect):\n"
+
+                        + "\n".join(low_conf)
+
+                ),
+
+            })
+
+
 
         structured_memory = {
             k: v for k, v in long_term_memory.items() if not k.startswith("dynamic_")
