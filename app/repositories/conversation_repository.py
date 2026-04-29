@@ -246,16 +246,22 @@ class ConversationRepository:
 
             # Case 2: Conflict → degrade carefully
 
-            if memory.confidence == "high":
+            # Case 2: Conflict → degrade based on source trust
+            if memory.source == "user_confirmed":
+                if memory.confidence == "high":
+                    memory.confidence = "medium"
+                elif memory.confidence == "medium":
+                    memory.confidence = "low"
+                else:
+                    memory.confidence = "low"
 
-                memory.confidence = "medium"
-
-            elif memory.confidence == "medium":
-
-                memory.confidence = "low"
+            elif memory.source == "llm_extraction":
+                if memory.confidence == "high":
+                    memory.confidence = "medium"
+                else:
+                    memory.confidence = "low"
 
             else:
-
                 memory.confidence = "low"
 
             memory.updated_at = datetime.utcnow()
@@ -406,8 +412,8 @@ class ConversationRepository:
             old_value = memory.value
             memory.value = value
             memory.confidence = "high"
-            memory.source = source
-            memory.evidence_count = 1
+            memory.source = "user_confirmed"
+            memory.evidence_count = max(memory.evidence_count, 1)
             memory.updated_at = datetime.utcnow()
             self.db.commit()
 
