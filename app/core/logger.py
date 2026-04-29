@@ -25,37 +25,27 @@ class JsonFormatter(logging.Formatter):
         for field in [
 
             "trace_id",
-
             "conversation_id",
-
             "user_id",
-
             "event",
-
             "model",
-
             "extracted_keys",
             "operation",
-
             "latency_ms",
-
             "input_messages_count",
-
             "prompt_tokens",
-
             "completion_tokens",
-
             "total_tokens",
-
             "error_message",
-
             "structured_keys",
-
             "dynamic_keys",
-
             "extracted_keys",
-
             "classification",
+            "eval_passed",
+            "eval_issues",
+            "reply_length",
+            "extracted_count",
+
 
         ]:
 
