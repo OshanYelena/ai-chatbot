@@ -236,14 +236,9 @@ def chat(
             conversation_id=conversation_id,
         )
         if memory_conflicts:
-            conflict_text = "\n".join(
+            conflict_items = "\n".join(
                 [
-                    (
-                        f"Memory conflict detected for '{conflict['key']}': "
-                        f"existing value is '{conflict['old_value']}', "
-                        f"new user claim is '{conflict['new_value']}'. "
-                        "Do not assume the new claim is true. Ask the user to clarify."
-                    )
+                    f"- {conflict['key']}: {conflict['old_value']} → {conflict['new_value']}"
                     for conflict in memory_conflicts
                 ]
             )
@@ -252,7 +247,12 @@ def chat(
                 0,
                 {
                     "role": "system",
-                    "content": conflict_text,
+                    "content": (
+                        "Memory conflicts detected:\n"
+                        f"{conflict_items}\n\n"
+                        "Do not assume the new claims are true yet. "
+                        "Ask the user one short yes/no question asking whether all these memory updates should be applied."
+                    ),
                 },
             )
 
