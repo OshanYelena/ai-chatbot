@@ -206,5 +206,43 @@ class LLMService:
 
             return {}
 
+    def detect_memory_confirmation(self, message: str, trace_id: str) -> str:
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Classify whether the user is confirming a memory update. "
+                            "Return only one word: confirm, reject, or unclear."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": message,
+                    },
+                ],
+                temperature=0,
+                max_tokens=10,
+            )
+
+            result = (response.choices[0].message.content or "unclear").strip().lower()
+
+            if result not in {"confirm", "reject", "unclear"}:
+                return "unclear"
+
+            return result
+
+        except Exception:
+            logger.exception(
+                "memory_confirmation_detection_failed",
+                extra={
+                    "trace_id": trace_id,
+                    "event": "memory_confirmation_detection_failed",
+                },
+            )
+            return "unclear"
+
 
 llm_service = LLMService()
