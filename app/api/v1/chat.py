@@ -66,8 +66,11 @@ def chat(
                 )
 
             eval_service.evaluate_confirmation_classification(
-                decision,
-                trace_id,
+                repo=repo,
+                classification=decision,
+                trace_id=trace_id,
+                user_id=payload.user_id,
+                conversation_id=conversation_id,
 
             )
 
@@ -197,9 +200,11 @@ def chat(
         )
 
         eval_service.evaluate_memory_extraction(
-            extracted_facts,
-            trace_id,
-
+            repo=repo,
+            extracted_facts=extracted_facts,
+            trace_id=trace_id,
+            user_id=payload.user_id,
+            conversation_id=conversation_id,
         )
 
         memory_update_results = []
@@ -272,9 +277,11 @@ def chat(
         )
 
         eval_service.evaluate_response(
-            reply,
-            trace_id,
-
+            repo=repo,
+            reply=reply,
+            trace_id=trace_id,
+            user_id=payload.user_id,
+            conversation_id=conversation_id,
         )
 
         memory_service.add_message(
