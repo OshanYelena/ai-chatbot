@@ -434,18 +434,23 @@ def chat_stream(
             full_reply = ""
 
             try:
+
                 for chunk in llm_service.stream_reply(
-                    context_messages,
-                    trace_id,
+
+                        context_messages,
+                        trace_id,
+
                 ):
                     full_reply += chunk
-                    yield chunk
+
+                    yield f"event: token\ndata: {chunk}\n\n"
 
                 memory_service.add_message(
                     repo=repo,
                     conversation_id=conversation_id,
                     role="assistant",
                     content=full_reply,
+
                 )
 
                 eval_service.evaluate_response(
@@ -459,20 +464,32 @@ def chat_stream(
 
                 db.commit()
 
-            except Exception:
+                yield f"event: done\ndata: {conversation_id}\n\n"
+
+            except Exception as e:
+
                 db.rollback()
-                raise
+
+                yield f"event: error\ndata: Streaming failed\n\n"
+
+                raise e
 
             finally:
+
                 db.close()
 
         return StreamingResponse(
+
             event_generator(),
-            media_type="text/plain",
+            media_type="text/event-stream",
             headers={
                 "X-Conversation-ID": conversation_id,
                 "X-Trace-ID": trace_id,
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+
             },
+
         )
 
     except Exception as e:
