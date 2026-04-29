@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta
 from typing import List, Optional, Type
-
+import json
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
 from app.core.config import settings
 from app.db.models import User, Conversation, ChatMessage, LongTermMemory
 from app.db.models import PendingMemoryConflict
-
+import json
+from app.db.models import LLMEvalResult
 
 class ConversationRepository:
     def __init__(self, db: Session):
@@ -49,6 +50,16 @@ class ConversationRepository:
             )
             .first()
         )
+
+    def _normalize_memory_value(self, value) -> str:
+
+        if isinstance(value, str):
+            return value
+
+        if isinstance(value, (dict, list)):
+            return json.dumps(value)
+
+        return str(value)
 
     def create_conversation(self, user_id: str) -> Conversation:
         self.get_or_create_user(user_id)
@@ -190,6 +201,8 @@ class ConversationRepository:
             source: str = "llm_extraction",
 
     ) -> dict:
+
+        value = self._normalize_memory_value(value)
 
         self.get_or_create_user(user_id)
 
@@ -397,6 +410,8 @@ class ConversationRepository:
             value: str,
             source: str = "user_confirmed",
     ) -> dict:
+        value = self._normalize_memory_value(value)
+
         self.get_or_create_user(user_id)
 
         memory = (
@@ -529,4 +544,31 @@ class ConversationRepository:
             conflict.resolved_at = datetime.utcnow()
 
         self.db.commit()
+
+    def create_llm_eval_result(
+            self,
+            trace_id: str,
+            operation: str,
+            passed: bool,
+            issues: list[str],
+            metadata: dict | None = None,
+            user_id: str | None = None,
+            conversation_id: str | None = None,
+
+    ):
+
+        eval_result = LLMEvalResult(
+            trace_id=trace_id,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            operation=operation,
+            passed=passed,
+            issues=json.dumps(issues),
+            metadata_json=json.dumps(metadata or {}),
+
+        )
+        self.db.add(eval_result)
+        self.db.flush()
+
+        return eval_result
 
