@@ -3,4 +3,5 @@ __pycache__
 *.pyc
 .env
 .git
+.env.docker
 alembic/versions/__pycache__
