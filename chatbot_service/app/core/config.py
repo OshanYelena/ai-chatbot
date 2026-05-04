@@ -1,12 +1,13 @@
 from pydantic_settings import BaseSettings
 
+
 class Settings(BaseSettings):
     APP_Name: str = "Simple AI Chatbot"
-    APP_VERSION:str = "0.1.0"
-    ENVIRONMENT:str = "development"
+    APP_VERSION: str = "0.1.0"
+    ENVIRONMENT: str = "development"
 
     OPENAI_API_KEY: str
-    OPENAI_MODEL:str = "gpt-40-mini"
+    OPENAI_MODEL: str = "gpt-4o-mini"
 
     MAX_HISTORY_MESSAGES: int = 10
     SUMMARY_TRIGGER_MESSAGES: int = 12
@@ -19,7 +20,11 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str
 
+    # URL of the separate auth gateway service
+    AUTH_GATEWAY_URL: str = "http://localhost:8001"
+
     class Config:
         env_file = ".env"
+
 
 settings = Settings()
