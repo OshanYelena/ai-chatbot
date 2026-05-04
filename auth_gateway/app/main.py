@@ -6,6 +6,9 @@ from app.core.config import settings
 from app.db.database import get_db
 from app.db.health import check_db_connection
 from app.middleware.trace_middleware import TraceMiddleware
+from fastapi.middleware.cors import CORSMiddleware
+
+
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -17,6 +20,16 @@ app = FastAPI(
 
 app.add_middleware(TraceMiddleware)
 app.include_router(auth_router, prefix="/api/v1")
+
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/", tags=["System"])
