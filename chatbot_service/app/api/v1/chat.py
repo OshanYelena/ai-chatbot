@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 import asyncio
+
 from app.core.logger import setup_logger
 from app.core.rate_limiter import limiter
 from app.db.database import get_db
@@ -12,7 +13,7 @@ from app.services.long_term_memory import long_term_memory_service
 from app.services.pending_memory_service import pending_memory_service
 from app.services.confirmation_service import confirmation_service
 from app.services.eval_service import eval_service
-
+from app.services.jwt_verifier import verify_token  # ← auth dependency
 
 from fastapi.responses import StreamingResponse
 
@@ -25,6 +26,7 @@ logger = setup_logger(__name__)
 def chat(
     request: Request,
     payload: ChatRequest,
+    user_id: str = Depends(verify_token),   # ← identity from JWT, not request body
     db: Session = Depends(get_db),
 ):
     trace_id = request.state.trace_id
@@ -36,7 +38,7 @@ def chat(
 
         conversation_id = memory_service.get_or_create_conversation(
             repo=repo,
-            user_id=payload.user_id,
+            user_id=user_id,
             conversation_id=payload.conversation_id,
         )
 
@@ -45,17 +47,14 @@ def chat(
             extra={
                 "trace_id": trace_id,
                 "conversation_id": conversation_id,
-                "user_id": payload.user_id,
+                "user_id": user_id,
                 "event": "chat_request",
             },
         )
 
         pending_conflicts = pending_memory_service.get_pending_conflicts(
-
             repo=repo,
-
             conversation_id=conversation_id,
-
         )
 
         if pending_conflicts:
@@ -72,11 +71,9 @@ def chat(
                 repo=repo,
                 classification=decision,
                 trace_id=trace_id,
-                user_id=payload.user_id,
+                user_id=user_id,
                 conversation_id=conversation_id,
-
             )
-
 
             if decision == "confirm":
 
@@ -84,110 +81,68 @@ def chat(
 
                 for conflict in pending_conflicts:
                     result = long_term_memory_service.force_update_memory(
-
                         repo=repo,
-
-                        user_id=payload.user_id,
-
+                        user_id=user_id,
                         key=conflict["key"],
-
                         value=conflict["new_value"],
-
                     )
-
                     updates.append(result)
 
                 pending_memory_service.clear_pending_conflicts(
-
                     repo=repo,
-
                     conversation_id=conversation_id,
-
                     status="confirmed",
-
                 )
 
                 reply = "Got it — I updated that memory."
 
                 memory_service.add_message(
-
                     repo=repo,
-
                     conversation_id=conversation_id,
-
                     role="user",
-
                     content=payload.message,
-
                 )
 
                 memory_service.add_message(
-
                     repo=repo,
-
                     conversation_id=conversation_id,
-
                     role="assistant",
-
                     content=reply,
-
                 )
                 db.commit()
                 return ChatResponse(
-
                     reply=reply,
-
-                    user_id=payload.user_id,
-
+                    user_id=user_id,
                     conversation_id=conversation_id,
-
                 )
 
             if decision == "reject":
                 pending_memory_service.clear_pending_conflicts(
-
                     repo=repo,
-
                     conversation_id=conversation_id,
-
                     status="rejected",
-
                 )
 
                 reply = "Got it — I kept the existing memory unchanged."
 
                 memory_service.add_message(
-
                     repo=repo,
-
                     conversation_id=conversation_id,
-
                     role="user",
-
                     content=payload.message,
-
                 )
 
                 memory_service.add_message(
-
                     repo=repo,
-
                     conversation_id=conversation_id,
-
                     role="assistant",
-
                     content=reply,
-
                 )
                 db.commit()
                 return ChatResponse(
-
                     reply=reply,
-
-                    user_id=payload.user_id,
-
+                    user_id=user_id,
                     conversation_id=conversation_id,
-
                 )
 
         memory_service.add_message(
@@ -206,7 +161,7 @@ def chat(
             repo=repo,
             extracted_facts=extracted_facts,
             trace_id=trace_id,
-            user_id=payload.user_id,
+            user_id=user_id,
             conversation_id=conversation_id,
         )
 
@@ -214,45 +169,32 @@ def chat(
 
         for key, value in extracted_facts.items():
             result = long_term_memory_service.update_memory(
-
                 repo=repo,
-
-                user_id=payload.user_id,
-
+                user_id=user_id,
                 key=key,
-
                 value=value,
-
             )
-
             memory_update_results.append(result)
 
         memory_conflicts = [
-
             result for result in memory_update_results
-
             if result.get("status") == "conflict"
-
         ]
 
         if memory_conflicts:
             pending_memory_service.set_pending_conflicts(
-
                 repo=repo,
-
-                user_id=payload.user_id,
-
+                user_id=user_id,
                 conversation_id=conversation_id,
-
                 conflicts=memory_conflicts,
-
             )
 
         context_messages = memory_service.build_context_messages(
             repo=repo,
-            user_id=payload.user_id,
+            user_id=user_id,
             conversation_id=conversation_id,
         )
+
         if memory_conflicts:
             conflict_items = "\n".join(
                 [
@@ -283,7 +225,7 @@ def chat(
             repo=repo,
             reply=reply,
             trace_id=trace_id,
-            user_id=payload.user_id,
+            user_id=user_id,
             conversation_id=conversation_id,
         )
 
@@ -317,7 +259,7 @@ def chat(
 
         return ChatResponse(
             reply=reply,
-            user_id=payload.user_id,
+            user_id=user_id,
             conversation_id=conversation_id,
         )
 
@@ -327,10 +269,10 @@ def chat(
             "chat_failed",
             extra={
                 "trace_id": trace_id,
-                "user_id": payload.user_id,
+                "user_id": user_id,
                 "conversation_id": payload.conversation_id,
                 "event": "chat_failed",
-                "error_message": str(e)
+                "error_message": str(e),
             },
         )
         raise HTTPException(
@@ -344,6 +286,7 @@ def chat(
 def chat_stream(
     request: Request,
     payload: ChatRequest,
+    user_id: str = Depends(verify_token),   # ← identity from JWT
     db: Session = Depends(get_db),
 ):
     trace_id = request.state.trace_id
@@ -355,7 +298,7 @@ def chat_stream(
 
         conversation_id = memory_service.get_or_create_conversation(
             repo=repo,
-            user_id=payload.user_id,
+            user_id=user_id,
             conversation_id=payload.conversation_id,
         )
 
@@ -375,7 +318,7 @@ def chat_stream(
             repo=repo,
             extracted_facts=extracted_facts,
             trace_id=trace_id,
-            user_id=payload.user_id,
+            user_id=user_id,
             conversation_id=conversation_id,
         )
 
@@ -384,7 +327,7 @@ def chat_stream(
         for key, value in extracted_facts.items():
             result = long_term_memory_service.update_memory(
                 repo=repo,
-                user_id=payload.user_id,
+                user_id=user_id,
                 key=key,
                 value=value,
             )
@@ -398,14 +341,14 @@ def chat_stream(
         if memory_conflicts:
             pending_memory_service.set_pending_conflicts(
                 repo=repo,
-                user_id=payload.user_id,
+                user_id=user_id,
                 conversation_id=conversation_id,
                 conflicts=memory_conflicts,
             )
 
         context_messages = memory_service.build_context_messages(
             repo=repo,
-            user_id=payload.user_id,
+            user_id=user_id,
             conversation_id=conversation_id,
         )
 
@@ -436,8 +379,8 @@ def chat_stream(
 
             try:
                 for chunk in llm_service.stream_reply(
-                        context_messages,
-                        trace_id,
+                    context_messages,
+                    trace_id,
                 ):
                     if await request.is_disconnected():
                         raise Exception("Client disconnected during stream")
@@ -460,7 +403,7 @@ def chat_stream(
                     repo=repo,
                     reply=full_reply,
                     trace_id=trace_id,
-                    user_id=payload.user_id,
+                    user_id=user_id,
                     conversation_id=conversation_id,
                     operation="stream_reply",
                 )
@@ -476,7 +419,7 @@ def chat_stream(
                     "chat_stream_failed_during_generation",
                     extra={
                         "trace_id": trace_id,
-                        "user_id": payload.user_id,
+                        "user_id": user_id,
                         "conversation_id": conversation_id,
                         "event": "chat_stream_failed_during_generation",
                         "error_message": str(e),
@@ -491,7 +434,6 @@ def chat_stream(
                 db.close()
 
         return StreamingResponse(
-
             event_generator(),
             media_type="text/event-stream",
             headers={
@@ -499,9 +441,7 @@ def chat_stream(
                 "X-Trace-ID": trace_id,
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-
             },
-
         )
 
     except Exception as e:
@@ -511,7 +451,7 @@ def chat_stream(
             "chat_stream_failed",
             extra={
                 "trace_id": trace_id,
-                "user_id": payload.user_id,
+                "user_id": user_id,
                 "conversation_id": payload.conversation_id,
                 "event": "chat_stream_failed",
                 "error_message": str(e),

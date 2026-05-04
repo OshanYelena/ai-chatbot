@@ -11,7 +11,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from app.core.telemetry import setup_telemetry
-
+from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.conversations import router as conversations_router
 
 app = FastAPI(
@@ -29,6 +29,14 @@ app.add_middleware(TraceMiddleware)
 app.include_router(chat_router, prefix="/api/v1")
 app.include_router(conversations_router, prefix="/api/v1")
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def root():

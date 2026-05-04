@@ -1,17 +1,63 @@
 services:
+
+  # ── Auth Gateway ────────────────────────────────────────────────────────────
+  auth_gateway:
+    build:
+      context: ./auth_gateway
+      dockerfile: Dockerfile
+    container_name: ai_auth_gateway
+    ports:
+      - "8001:8001"
+    env_file:
+      - ./auth_gateway/.env.docker
+    depends_on:
+      auth_db:
+        condition: service_healthy
+    command: >
+      sh -c "python -m alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8001"
+    networks:
+      - app_network
+
+  auth_db:
+    image: postgres:16
+    container_name: ai_auth_db
+    environment:
+      POSTGRES_DB: auth_db
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - auth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_network
+
+  # ── Chatbot Service ──────────────────────────────────────────────────────────
   api:
-    build: .
+    build:
+      context: ./chatbot_service
+      dockerfile: Dockerfile
     container_name: ai_chatbot_api
     ports:
       - "8000:8000"
     env_file:
-      - .env.docker
+      - ./chatbot_service/.env.docker
     depends_on:
       db:
         condition: service_healthy
+      auth_gateway:
+        condition: service_started
     command: >
-      sh -c "python -m alembic upgrade head &&
+      sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    networks:
+      - app_network
 
   db:
     image: postgres:16
@@ -29,8 +75,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - app_network
 
-
+  # ── Jaeger Tracing ───────────────────────────────────────────────────────────
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: ai_chatbot_jaeger
@@ -38,6 +86,13 @@ services:
       - "16686:16686"
       - "4317:4317"
       - "4318:4318"
+    networks:
+      - app_network
 
 volumes:
+  auth_postgres_data:
   chatbot_postgres_data:
+
+networks:
+  app_network:
+    driver: bridge
