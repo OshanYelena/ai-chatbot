@@ -9,6 +9,7 @@ from app.repositories.conversation_repository import ConversationRepository
 from app.schemas.conversation import ConversationListItem
 from app.services.jwt_verifier import verify_token  # ← auth dependency
 
+from app.schemas.conversation import ConversationMessagesResponse, MessageItem
 router = APIRouter(prefix="/conversations", tags=["Conversations"])
 
 
