@@ -13,6 +13,7 @@ from slowapi import _rate_limit_exceeded_handler
 from app.core.telemetry import setup_telemetry
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.conversations import router as conversations_router
+from app.services.auth_gateway_health import check_auth_gateway_connection
 
 app = FastAPI(
     title= settings.APP_Name,
@@ -58,8 +59,10 @@ def health_check(db: Session = Depends(get_db)):
 @app.get("/ready")
 def readiness_check(db: Session = Depends(get_db)):
     check_db_connection(db)
+    check_auth_gateway_connection()
+
     return {
         "status": "ready",
-        "database": "connected"
-
+        "database": "connected",
+        "auth_gateway": "connected",
     }
