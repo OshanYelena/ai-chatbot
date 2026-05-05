@@ -20,70 +20,178 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 logger = setup_logger(__name__)
 
 
-# ── Register ──────────────────────────────────────────────────────────────────
-
 @router.post(
     "/register",
     response_model=RegisterResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user",
 )
-def register(payload: RegisterRequest, db: Session = Depends(get_db)):
+def register(
+    payload: RegisterRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    trace_id = request.state.trace_id
+
     try:
-        user = auth_service.register(db=db, email=payload.email, password=payload.password)
+        user = auth_service.register(
+            db=db,
+            email=payload.email,
+            password=payload.password,
+        )
+
+        logger.info(
+            "register_success",
+            extra={
+                "trace_id": trace_id,
+                "event": "register_success",
+                "operation": "register",
+                "user_id": user.id,
+                "email": user.email,
+            },
+        )
+
+        return RegisterResponse(user_id=user.id, email=user.email)
+
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
-    return RegisterResponse(user_id=user.id, email=user.email)
+        logger.info(
+            "register_failed",
+            extra={
+                "trace_id": trace_id,
+                "event": "register_failed",
+                "operation": "register",
+                "email": payload.email,
+                "error_message": str(exc),
+            },
+        )
 
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        )
 
-# ── Login ─────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/login",
     response_model=TokenResponse,
     summary="Login and receive access + refresh tokens",
 )
-def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+def login(
+    payload: LoginRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    trace_id = request.state.trace_id
+
     try:
-        tokens = auth_service.login(db=db, email=payload.email, password=payload.password)
+        tokens = auth_service.login(
+            db=db,
+            email=payload.email,
+            password=payload.password,
+        )
+
+        logger.info(
+            "login_success",
+            extra={
+                "trace_id": trace_id,
+                "event": "login_success",
+                "operation": "login",
+                "email": payload.email,
+            },
+        )
+
+        return TokenResponse(**tokens)
+
     except ValueError as exc:
-        # Use 401 for auth failures, never 404 — prevents user enumeration
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
+        logger.info(
+            "login_failed",
+            extra={
+                "trace_id": trace_id,
+                "event": "login_failed",
+                "operation": "login",
+                "email": payload.email,
+                "error_message": str(exc),
+            },
+        )
 
-    logger.info(
-        "login_success",
-        extra={"trace_id": request.state.trace_id, "email": payload.email},
-    )
-    return TokenResponse(**tokens)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        )
 
-
-# ── Refresh ───────────────────────────────────────────────────────────────────
 
 @router.post(
     "/refresh",
     response_model=TokenResponse,
     summary="Exchange a refresh token for a new token pair (rotation)",
 )
-def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
+def refresh(
+    payload: RefreshRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    trace_id = request.state.trace_id
+
     try:
-        tokens = auth_service.refresh(db=db, refresh_token_raw=payload.refresh_token)
+        tokens = auth_service.refresh(
+            db=db,
+            refresh_token_raw=payload.refresh_token,
+        )
+
+        logger.info(
+            "refresh_success",
+            extra={
+                "trace_id": trace_id,
+                "event": "refresh_success",
+                "operation": "refresh",
+            },
+        )
+
+        return TokenResponse(**tokens)
+
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc))
-    return TokenResponse(**tokens)
+        logger.info(
+            "refresh_failed",
+            extra={
+                "trace_id": trace_id,
+                "event": "refresh_failed",
+                "operation": "refresh",
+                "error_message": str(exc),
+            },
+        )
 
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=str(exc),
+        )
 
-# ── Logout ────────────────────────────────────────────────────────────────────
 
 @router.post(
     "/logout",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke a refresh token (server-side logout)",
 )
-def logout(payload: LogoutRequest, db: Session = Depends(get_db)):
-    auth_service.logout(db=db, refresh_token_raw=payload.refresh_token)
+def logout(
+    payload: LogoutRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    trace_id = request.state.trace_id
 
+    auth_service.logout(
+        db=db,
+        refresh_token_raw=payload.refresh_token,
+    )
 
-# ── Verify (internal — called by chatbot service) ─────────────────────────────
+    logger.info(
+        "logout_success",
+        extra={
+            "trace_id": trace_id,
+            "event": "logout_success",
+            "operation": "logout",
+        },
+    )
+
 
 @router.get(
     "/verify",
@@ -91,13 +199,22 @@ def logout(payload: LogoutRequest, db: Session = Depends(get_db)):
     summary="Validate a Bearer access token — used internally by the chatbot service",
 )
 def verify(
+    request: Request,
     current_user: AuthUser = Depends(get_current_user),
 ):
-    """
-    The chatbot service calls this endpoint to validate a token before
-    processing any chat request. Returns the user_id so the chatbot
-    service knows which user is making the request.
-    """
+    trace_id = request.state.trace_id
+
+    logger.info(
+        "verify_success",
+        extra={
+            "trace_id": trace_id,
+            "event": "verify_success",
+            "operation": "verify",
+            "user_id": current_user.id,
+            "email": current_user.email,
+        },
+    )
+
     return VerifyResponse(
         valid=True,
         user_id=current_user.id,
@@ -105,13 +222,27 @@ def verify(
     )
 
 
-# ── Me ────────────────────────────────────────────────────────────────────────
-
 @router.get(
     "/me",
     summary="Return the currently authenticated user's profile",
 )
-def me(current_user: AuthUser = Depends(get_current_user)):
+def me(
+    request: Request,
+    current_user: AuthUser = Depends(get_current_user),
+):
+    trace_id = request.state.trace_id
+
+    logger.info(
+        "me_success",
+        extra={
+            "trace_id": trace_id,
+            "event": "me_success",
+            "operation": "me",
+            "user_id": current_user.id,
+            "email": current_user.email,
+        },
+    )
+
     return {
         "user_id": current_user.id,
         "email": current_user.email,
