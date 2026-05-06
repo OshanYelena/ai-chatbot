@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-
+import uuid
 from jose import JWTError, jwt
 
 from app.core.config import settings
@@ -24,6 +24,7 @@ def create_access_token(user_id: str, email: str) -> str:
         "email": email,
         "type": ACCESS_TOKEN_TYPE,
         "exp": expire,
+        "jti": str(uuid.uuid4()),
         "iat": _now(),
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
@@ -35,6 +36,7 @@ def create_refresh_token(user_id: str) -> str:
         "sub": user_id,
         "type": REFRESH_TOKEN_TYPE,
         "exp": expire,
+        "jti": str(uuid.uuid4()),
         "iat": _now(),
     }
     return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
