@@ -5,3 +5,4 @@ __pycache__
 .git
 .env.docker
 alembic/versions/__pycache__
+.auth-gateway
